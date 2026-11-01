@@ -105,11 +105,26 @@ GITHUB_PRIVATE_KEY_PATH=C:\Users\you\.secrets\repo-auditor.pem
 DATABASE_URL=postgresql://auditor:auditor@localhost:5432/auditor
 ```
 
-### 3.5 Verify **(Phase 1 — pending)**
+### 3.5 Verify
 ```powershell
 auditor whoami
 ```
-Expected output: App name, installation ID, org, repository count visible to the installation, and the current rate limit (`15000/hr`).
+Example output:
+```
+app:              Acme Repo Auditor (acme-repo-auditor)
+installed on:     acme (all repositories)
+repos visible:    2534
+org:              acme (base permission: read)
+rate limit:       core 14990/15000 per hour
+rate limit:       graphql 10000/10000 per hour
+permissions:      actions=read, administration=read, contents=read, members=read, ...
+GitHub App OK
+```
+It exits with an error and a `PROBLEM:` line for each of these:
+- a required permission is missing (see §3.1)
+- the App is installed on *selected* repositories instead of all of them
+- the installation belongs to a different org than `GITHUB_ORG`
+- the org base permission can't be read (needs Organization → Administration: read)
 
 ### 3.6 Rotating the private key
 1. Generate a new key on the App page; GitHub allows two keys to be active at once.
@@ -138,10 +153,31 @@ docker compose exec db psql -U auditor -d auditor   # poke around: \dt inventory
 
 Roles: `auditor` owns everything (collector and migrations). `auditor_read` is a NOLOGIN group with `SELECT` on `reporting.*` only. Report tools log in as a user that is a member of it (created in Phase 4).
 
-## 5. Phase 3 — Running the collector **(pending)**
-- `auditor sync --limit 50` (test subset)
-- `auditor sync --full`
-- Reading `sync_runs` to check results
+## 5. Phase 3 — Running the collector
+
+```powershell
+auditor db migrate          # make sure the schema is current
+auditor whoami              # App OK?
+auditor sync --limit 50     # trial: first 50 repos (by name)
+auditor sync                # full run (all repos)
+```
+
+| Mode | What it does | What it never does |
+|---|---|---|
+| `--limit N` | Reads org, members, teams, and the first N repos in full | Soft-delete repos, team grants, rulesets, or users (only part of the org was read) |
+| full | Reads everything; marks vanished repos/branches/grants as deleted; writes today's snapshot | Delete org-wide things (rulesets, users) if any repo or team failed |
+
+**Exit codes:** `0` success · `2` partial (some repos failed; see the errors printed, or `sync_runs.errors`) · `1` crash.
+
+**Check the result:**
+```sql
+SELECT * FROM reporting.v_sync_runs ORDER BY sync_run_id DESC LIMIT 5;  -- status, duration, API use
+SELECT repository, failures FROM reporting.v_default_branch_compliance WHERE NOT is_compliant;
+```
+
+**API budget:** the log's last line reports REST calls (and how many were free `304 Not Modified` responses) plus GraphQL points. The first run is the most expensive; later runs reuse ETags from `inventory.http_cache`. On the first real run, compare these numbers to the estimate in architecture.md §3.2.
+
+**Validate against GitHub (first real run):** pick 5–10 repos and compare `v_branch_protection` with each repo's **Settings → Rules / Branches** page, and `v_repo_access` with **Settings → Collaborators and teams**. The ruleset matching in `src/auditor/protection.py` is our own implementation of GitHub's patterns, so this check matters.
 
 ## 6. Phase 4 — AWS deployment **(pending)**
 - Terraform bootstrap (S3 state bucket)

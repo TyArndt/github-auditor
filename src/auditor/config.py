@@ -26,6 +26,8 @@ class Settings(DatabaseSettings):
     github_private_key_path: Path | None = None
     github_private_key: SecretStr | None = None
     github_api_url: str = "https://api.github.com"
+    # Pinned REST API version (supported list: `gh api /versions`).
+    github_api_version: str = "2022-11-28"
 
     collector_concurrency: int = Field(default=8, ge=1, le=32)
     # Pause API calls when the remaining rate-limit budget drops below this.
