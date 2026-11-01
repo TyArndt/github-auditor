@@ -28,6 +28,10 @@ services:
         condition: service_healthy
     environment:
       PGPASSWORD: auditor
+      # Fail fast instead of hanging: unreachable server, or a lock held by another session
+      # (e.g. a DB tool left "idle in transaction"), becomes an error within seconds.
+      PGCONNECT_TIMEOUT: "10"
+      PGOPTIONS: "-c lock_timeout=15s -c statement_timeout=60s"
     volumes:
       - ./db/local/metabase-setup.sql:/setup.sql:ro
     command: ["psql", "-h", "db", "-U", "auditor", "-d", "auditor", "-v", "ON_ERROR_STOP=1", "-q", "-f", "/setup.sql"]

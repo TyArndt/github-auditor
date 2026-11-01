@@ -235,7 +235,20 @@ All are in the **GitHub Auditor** collection:
 
 Tests check that every query runs as the read-only role and that cards don't overlap. Edits made directly in Metabase to *managed* questions are overwritten on the next setup. Ad-hoc questions you save elsewhere in Metabase are untouched.
 
-### 7.4 Notes
+### 7.4 Troubleshooting
+| Symptom | Cause / fix |
+|---|---|
+| `db-setup` exits with `canceling statement due to lock timeout` | Another session holds a lock on roles/databases, usually a DB tool (DBeaver, pgAdmin) left **idle in transaction**. Find it with the query below, commit/close it, then `docker compose --profile reports up -d` again |
+| `db-setup` exits with `timeout expired` / `could not connect` | Can't reach the `db` container: check `docker compose ps` and that `db` is healthy |
+| Metabase page doesn't load | It takes about a minute on first start: `docker compose ps` until `metabase` is `healthy`; `docker logs <metabase container>` for errors |
+| Image pull fails with a certificate error | Docker Desktop needs the corporate CA (SSL inspection); see Docker Desktop's proxy/certificate settings |
+
+```powershell
+# Who is holding locks / blocking whom
+docker compose exec db psql -U auditor -d postgres -c "SELECT pid, usename, state, wait_event_type, pg_blocking_pids(pid) AS blocked_by, now() - xact_start AS in_txn_for, left(query, 70) AS query FROM pg_stat_activity WHERE backend_type = 'client backend' AND pid <> pg_backend_pid() ORDER BY xact_start;"
+```
+
+### 7.5 Notes
 - **Image:** `metabase/metabase` is pinned by version and digest in `docker-compose.yml`; Dependabot proposes updates weekly. Your Sonatype policy may scan container images, so check it the way you checked the Python packages.
 - **No calls home:** update checks and anonymous usage tracking are disabled.
 - **Sign-in:** Metabase uses its own logins for now. Okta SSO comes in Phase 8.
