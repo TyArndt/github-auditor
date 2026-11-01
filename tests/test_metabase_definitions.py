@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -30,7 +31,7 @@ def test_queries_only_read_reporting_views() -> None:
 
 
 def test_cards_stack_full_width_in_file_order() -> None:
-    cards = [
+    cards: list[dict[str, Any]] = [
         {"key": "a", "display": "scalar"},
         {"key": "b", "display": "table", "height": 10},
         {"key": "c", "display": "pie"},
