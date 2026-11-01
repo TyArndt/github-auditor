@@ -1,4 +1,7 @@
-# Local development services. Metabase is added in Phase 5.
+# Local development services.
+#   docker compose up -d db                      PostgreSQL only
+#   docker compose --profile reports up -d       PostgreSQL + Metabase (http://localhost:3000,
+#                                                or METABASE_PORT from .env)
 services:
   db:
     image: postgres:17
@@ -15,6 +18,46 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  # One-shot: creates Metabase's app database and the read-only reporting login.
+  db-setup:
+    image: postgres:17
+    profiles: ["reports"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGPASSWORD: auditor
+    volumes:
+      - ./db/local/metabase-setup.sql:/setup.sql:ro
+    command: ["psql", "-h", "db", "-U", "auditor", "-d", "auditor", "-v", "ON_ERROR_STOP=1", "-q", "-f", "/setup.sql"]
+    restart: "no"
+
+  metabase:
+    # Pinned by tag AND digest (exact image). Version chosen from GitHub releases, >= 2 weeks old.
+    image: metabase/metabase:v0.64.1@sha256:fcf3ad4c00f303d96c63233967a24f0d0348bbb725d4704ee1961f9185674e13
+    profiles: ["reports"]
+    depends_on:
+      db-setup:
+        condition: service_completed_successfully
+    ports:
+      - "${METABASE_PORT:-3000}:3000" # set METABASE_PORT in .env if 3000 is taken
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_HOST: db
+      MB_DB_PORT: 5432
+      MB_DB_DBNAME: metabase
+      MB_DB_USER: metabase
+      MB_DB_PASS: metabase
+      # No calls home: version checks and anonymous usage tracking off.
+      MB_CHECK_FOR_UPDATES: "false"
+      MB_ANON_TRACKING_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fs http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
 
 volumes:
   pgdata:

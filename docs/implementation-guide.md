@@ -201,9 +201,44 @@ SELECT repository, failures FROM reporting.v_default_branch_compliance WHERE NOT
 - Loading secrets into Secrets Manager
 - Triggering a manual run: `aws ecs run-task ...` / Scheduler "run now"
 
-## 7. Phase 5 — Metabase **(pending)**
-- First-time setup, connecting with the read-only role
-- Importing the dashboard definitions
+## 7. Phase 5 — Metabase (local)
+
+Metabase runs in Docker next to PostgreSQL and reads **only the `reporting` views**, through the read-only login `metabase_reader`. Its questions and dashboards are defined as files in [`metabase/`](../metabase/) and created by a command, so they can be rebuilt anywhere (later in AWS) instead of being clicked together by hand.
+
+### 7.1 Start it
+1. In `.env`, set `METABASE_ADMIN_EMAIL` and a strong `METABASE_ADMIN_PASSWORD` (Metabase rejects common passwords). If port 3000 is taken, set `METABASE_PORT` and `METABASE_URL` to another port (e.g. 3001).
+2. Start the services, make sure the schema and data are current, and provision:
+   ```powershell
+   docker compose --profile reports up -d   # PostgreSQL + one-off setup + Metabase (~1 min to start)
+   auditor db migrate
+   auditor sync                             # or: python scripts/demo_data.py for demo data
+   auditor metabase setup                   # admin user, connection, questions, dashboards
+   ```
+3. Open the URL it prints and log in with the admin email/password.
+
+`docker compose --profile reports up` also runs `db-setup` once, which creates Metabase's own database and the `metabase_reader` login (see `db/local/metabase-setup.sql`). It's idempotent.
+
+### 7.2 Dashboards
+All are in the **GitHub Auditor** collection:
+
+| Dashboard | Answers |
+|---|---|
+| Repository Inventory | How many repos, archived, without workflows or CODEOWNERS; activity by last push; Actions adoption; full list; stale repos (180+ days) |
+| Branch Protection & Compliance | Default-branch compliance %, why repos fail, non-compliant list, trend over time, every branch's protection, stale branches (90+ days) |
+| Access & Ownership | Org owners and base permission, admin sprawl, CODEOWNERS owners, who has access to what and why, direct grants, repos without CODEOWNERS |
+| Actions & Collector Health | Data freshness (hours since last sync), recent sync runs, every workflow and its last run |
+
+### 7.3 Change a dashboard
+1. Edit or add a query in `metabase/sql/<key>.sql`. It must read `reporting.*` views only; leading `--` comments become the question's description.
+2. Place it in `metabase/dashboards.json` (24-column grid: `row`, `col`, `size_x`, `size_y`; `display`: `scalar`, `table`, `bar`, `row`, `pie`, `line`).
+3. Run `auditor metabase setup`.
+
+Tests check that every query runs as the read-only role and that cards don't overlap. Edits made directly in Metabase to *managed* questions are overwritten on the next setup. Ad-hoc questions you save elsewhere in Metabase are untouched.
+
+### 7.4 Notes
+- **Image:** `metabase/metabase` is pinned by version and digest in `docker-compose.yml`; Dependabot proposes updates weekly. Your Sonatype policy may scan container images, so check it the way you checked the Python packages.
+- **No calls home:** update checks and anonymous usage tracking are disabled.
+- **Sign-in:** Metabase uses its own logins for now. Okta SSO comes in Phase 8.
 
 ## 8. Phase 6 — Web app **(pending)**
 
