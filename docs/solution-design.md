@@ -8,7 +8,7 @@
 
 ## 1. Problem
 
-The organization runs on GitHub Enterprise Cloud with Enterprise Managed Users (Okta). It has more than 2,500 repositories and about 10,000 branches. Nobody can easily answer basic governance questions:
+The organization runs on GitHub Enterprise Cloud with Enterprise Managed Users (Okta). It has thousands of repositories and many more branches. Nobody can easily answer basic governance questions:
 
 - Which repositories exist? Are they active, stale, or archived?
 - Who has access to each repository, at what level, and why?
@@ -113,7 +113,7 @@ Rulesets in `evaluate` or `disabled` mode do **not** count. Archived repositorie
 | Freshness | Data no more than 24 hours old; daily run at 02:00 UTC |
 | Runtime | Full sync under 60 minutes; daily incremental target under 20 minutes |
 | API budget | Stay under 50% of the 15,000/hr installation REST limit, honor secondary rate limits |
-| Scale | Designed for 10k repos / 100k branches without a redesign |
+| Scale | Large organizations (thousands to tens of thousands of repos) without a redesign; API cost grows linearly per repo (architecture §3.2) |
 | Security | Read-only App permissions; private key in AWS Secrets Manager; DB in private subnets; no public endpoints until Okta auth is added |
 | Auditability | Soft deletes and daily snapshots give point-in-time answers; `sync_runs` logs every run |
 | Retention | Current state kept indefinitely; daily snapshots 3 years; Actions runs 13 months (Phase 7) |

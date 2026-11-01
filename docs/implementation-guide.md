@@ -129,7 +129,7 @@ Example output:
 ```
 app:              Acme Repo Auditor (acme-repo-auditor)
 installed on:     acme (all repositories)
-repos visible:    2534
+repos visible:    123
 org:              acme (base permission: read)
 rate limit:       core 14990/15000 per hour
 rate limit:       graphql 10000/10000 per hour

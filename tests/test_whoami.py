@@ -34,7 +34,7 @@ def _http(
             "/app": {"name": "Acme Repo Auditor", "slug": "acme-repo-auditor"},
             "/app/installations/9": installation,
             "/app/installations/9/access_tokens": {"token": "ghs_x", "expires_at": expires},
-            "/installation/repositories": {"total_count": 2534, "repositories": []},
+            "/installation/repositories": {"total_count": 123, "repositories": []},
             "/orgs/acme": {"login": "acme", "default_repository_permission": base_permission},
             "/rate_limit": {
                 "resources": {
@@ -56,7 +56,7 @@ def test_correct_setup_has_no_problems(private_key_pem: str) -> None:
     }
     info = whoami(_settings(private_key_pem), http=_http(inst))
     assert info.problems == [] and info.warnings == []
-    assert (info.repo_count, info.rate_limits["core"]["limit"]) == (2534, 15000)
+    assert (info.repo_count, info.rate_limits["core"]["limit"]) == (123, 15000)
 
 
 def test_unreadable_org_rulesets_is_a_warning_not_a_problem(private_key_pem: str) -> None:
