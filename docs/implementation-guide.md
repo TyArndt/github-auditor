@@ -230,10 +230,10 @@ All are in the **GitHub Auditor** collection:
 
 ### 7.3 Change a dashboard
 1. Edit or add a query in `metabase/sql/<key>.sql`. It must read `reporting.*` views only; leading `--` comments become the question's description.
-2. Place it in `metabase/dashboards.json` (24-column grid: `row`, `col`, `size_x`, `size_y`; `display`: `scalar`, `table`, `bar`, `row`, `pie`, `line`). Dashboards are full width by default; add `"width": "fixed"` to a dashboard for Metabase's narrow layout.
+2. Add it to a dashboard's `cards` list in `metabase/dashboards.json`, at the position where it should appear. **Every card is full width, stacked top to bottom in list order.** Set `display` (`scalar`, `table`, `bar`, `row`, `pie`, `line`) and optionally `height` in grid rows (defaults: scalar 3, chart 6, table 8). Dashboards themselves are full width; add `"width": "fixed"` to a dashboard for Metabase's narrow layout.
 3. Run `auditor metabase setup`.
 
-Tests check that every query runs as the read-only role and that cards don't overlap. Edits made directly in Metabase to *managed* questions are overwritten on the next setup. Ad-hoc questions you save elsewhere in Metabase are untouched.
+Tests check that every query runs as the read-only role and that the layout file is valid. Edits made directly in Metabase to *managed* questions are overwritten on the next setup. Ad-hoc questions you save elsewhere in Metabase are untouched.
 
 ### 7.4 Troubleshooting
 | Symptom | Cause / fix |

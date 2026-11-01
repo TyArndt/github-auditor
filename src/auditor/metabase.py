@@ -27,6 +27,10 @@ log = logging.getLogger(__name__)
 DEFINITIONS_DIR = Path(__file__).resolve().parents[2] / "metabase"
 DATABASE_NAME = "GitHub Auditor"
 
+# Layout: every card spans the full dashboard width, stacked in the order listed.
+GRID_COLUMNS = 24  # Metabase's dashboard grid width
+DEFAULT_HEIGHTS = {"scalar": 3, "table": 8, "bar": 6, "row": 6, "pie": 6, "line": 6}
+
 
 class MetabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -186,18 +190,34 @@ class Metabase:
         dashcards = [
             {
                 "id": -(i + 1),  # negative ids = new dashcards; the full list replaces the old
-                "card_id": card_ids[c["key"]],
-                "row": c["row"],
-                "col": c["col"],
-                "size_x": c["size_x"],
-                "size_y": c["size_y"],
+                "card_id": card_ids[card["key"]],
+                "row": row,
+                "col": 0,
+                "size_x": GRID_COLUMNS,
+                "size_y": height,
                 "parameter_mappings": [],
                 "visualization_settings": {},
             }
-            for i, c in enumerate(dashboard["cards"])
+            for i, (card, row, height) in enumerate(stacked_layout(dashboard["cards"]))
         ]
         self._call("PUT", f"/dashboard/{dashboard_id}", json={**meta, "dashcards": dashcards})
         return dashboard_id
+
+
+def card_height(card: dict[str, Any]) -> int:
+    """Rows a card occupies: its `height`, else a sensible default for its display type."""
+    return int(card.get("height", DEFAULT_HEIGHTS.get(card["display"], 6)))
+
+
+def stacked_layout(cards: list[dict[str, Any]]) -> list[tuple[dict[str, Any], int, int]]:
+    """Every card full width, one per row, in file order: (card, row, height)."""
+    layout = []
+    row = 0
+    for card in cards:
+        height = card_height(card)
+        layout.append((card, row, height))
+        row += height
+    return layout
 
 
 def _description(sql: str) -> str | None:
@@ -220,6 +240,11 @@ def load_definitions(base: Path = DEFINITIONS_DIR) -> tuple[dict[str, Any], dict
             if card["name"] in names:
                 raise MetabaseError(f"duplicate question name: {card['name']}")
             names.add(card["name"])
+            if {"row", "col", "size_x", "size_y"} & card.keys():
+                raise MetabaseError(
+                    f"card {card['key']}: cards are stacked full width; use `height`, "
+                    "not row/col/size_x/size_y"
+                )
             path = base / "sql" / f"{card['key']}.sql"
             if not path.is_file():
                 raise MetabaseError(f"missing query file for card {card['key']}: {path}")

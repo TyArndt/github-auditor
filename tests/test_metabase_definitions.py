@@ -1,8 +1,19 @@
 """The metabase/ definitions are consistent (no Metabase needed)."""
 
-from auditor.metabase import DEFINITIONS_DIR, _description, load_definitions
+import json
+from pathlib import Path
 
-GRID_COLUMNS = 24  # Metabase dashboard grid width
+import pytest
+
+from auditor.metabase import (
+    DEFINITIONS_DIR,
+    GRID_COLUMNS,
+    MetabaseError,
+    _description,
+    card_height,
+    load_definitions,
+    stacked_layout,
+)
 
 
 def test_every_card_has_sql_and_every_sql_is_used() -> None:
@@ -18,16 +29,36 @@ def test_queries_only_read_reporting_views() -> None:
         assert "reporting." in sql, f"{key} doesn't read a reporting view"
 
 
-def test_cards_fit_the_grid_without_overlap() -> None:
+def test_cards_stack_full_width_in_file_order() -> None:
+    cards = [
+        {"key": "a", "display": "scalar"},
+        {"key": "b", "display": "table", "height": 10},
+        {"key": "c", "display": "pie"},
+    ]
+    assert [(c["key"], row, h) for c, row, h in stacked_layout(cards)] == [
+        ("a", 0, 3),
+        ("b", 3, 10),
+        ("c", 13, 6),
+    ]
+    assert GRID_COLUMNS == 24
+
+
+def test_every_card_has_a_positive_height() -> None:
     spec, _ = load_definitions()
     for dashboard in spec["dashboards"]:
-        occupied: dict[tuple[int, int], str] = {}
         for card in dashboard["cards"]:
-            assert card["col"] + card["size_x"] <= GRID_COLUMNS, card["name"]
-            for row in range(card["row"], card["row"] + card["size_y"]):
-                for col in range(card["col"], card["col"] + card["size_x"]):
-                    other = occupied.setdefault((row, col), card["name"])
-                    assert other == card["name"], f"{card['name']} overlaps {other}"
+            assert card_height(card) > 0, card["name"]
+
+
+def test_grid_coordinates_are_rejected(tmp_path: Path) -> None:
+    spec, queries = load_definitions()
+    spec["dashboards"][0]["cards"][0]["size_x"] = 6  # old-style layout
+    (tmp_path / "sql").mkdir()
+    for key, sql in queries.items():
+        (tmp_path / "sql" / f"{key}.sql").write_text(sql, encoding="utf-8")
+    (tmp_path / "dashboards.json").write_text(json.dumps(spec), encoding="utf-8")
+    with pytest.raises(MetabaseError, match="stacked full width"):
+        load_definitions(tmp_path)
 
 
 def test_dashboard_width_is_valid() -> None:
