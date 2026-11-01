@@ -176,6 +176,8 @@ class Metabase:
             "name": dashboard["name"],
             "description": dashboard.get("description"),
             "collection_id": collection_id,
+            # "full" = the dashboard's full-width toggle; "fixed" = Metabase's narrow default.
+            "width": dashboard.get("width", "full"),
         }
         if dashboard["name"] in existing:
             dashboard_id = existing[dashboard["name"]]

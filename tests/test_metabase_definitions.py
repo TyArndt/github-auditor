@@ -30,6 +30,12 @@ def test_cards_fit_the_grid_without_overlap() -> None:
                     assert other == card["name"], f"{card['name']} overlaps {other}"
 
 
+def test_dashboard_width_is_valid() -> None:
+    spec, _ = load_definitions()
+    for dashboard in spec["dashboards"]:
+        assert dashboard.get("width", "full") in ("full", "fixed"), dashboard["name"]
+
+
 def test_leading_comments_become_description() -> None:
     assert _description("-- Line one.\n-- Line two.\nSELECT 1") == "Line one. Line two."
     assert _description("SELECT 1") is None

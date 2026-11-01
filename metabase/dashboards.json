@@ -40,12 +40,12 @@
       "name": "Access & Ownership",
       "description": "Who can access each repository and why (team, nested team, direct grant, org owner), plus CODEOWNERS. The org base permission applies to all members on top of this.",
       "cards": [
-        {"key": "access_org_owners", "name": "Org owners and base permission", "display": "table", "row": 0, "col": 0, "size_x": 8, "size_y": 6},
-        {"key": "access_admin_sprawl", "name": "Users with admin on the most repos", "display": "table", "row": 0, "col": 8, "size_x": 8, "size_y": 6},
-        {"key": "codeowners_by_team", "name": "CODEOWNERS owners by repo count", "display": "table", "row": 0, "col": 16, "size_x": 8, "size_y": 6},
-        {"key": "access_all", "name": "Repository access", "display": "table", "row": 6, "col": 0, "size_x": 24, "size_y": 10},
-        {"key": "access_direct_grants", "name": "Direct (non-team) access grants", "display": "table", "row": 16, "col": 0, "size_x": 12, "size_y": 8},
-        {"key": "codeowners_missing", "name": "Repositories without CODEOWNERS", "display": "table", "row": 16, "col": 12, "size_x": 12, "size_y": 8}
+        {"key": "access_org_owners", "name": "Org owners and base permission", "display": "table", "row": 0, "col": 0, "size_x": 24, "size_y": 5},
+        {"key": "access_admin_sprawl", "name": "Users with admin on the most repos", "display": "table", "row": 5, "col": 0, "size_x": 24, "size_y": 6},
+        {"key": "codeowners_by_team", "name": "CODEOWNERS owners by repo count", "display": "table", "row": 11, "col": 0, "size_x": 24, "size_y": 6},
+        {"key": "access_all", "name": "Repository access", "display": "table", "row": 17, "col": 0, "size_x": 24, "size_y": 10},
+        {"key": "access_direct_grants", "name": "Direct (non-team) access grants", "display": "table", "row": 27, "col": 0, "size_x": 12, "size_y": 8},
+        {"key": "codeowners_missing", "name": "Repositories without CODEOWNERS", "display": "table", "row": 27, "col": 12, "size_x": 12, "size_y": 8}
       ]
     },
     {
