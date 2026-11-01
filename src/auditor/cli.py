@@ -1,10 +1,12 @@
 """Command-line entry point: `auditor <command>`."""
 
+import logging
+
 import typer
 from pydantic import ValidationError
 
 from auditor import __version__
-from auditor.config import get_db_settings, get_settings
+from auditor.config import Settings, get_db_settings, get_settings
 from auditor.db import migrate as db_migrate
 
 app = typer.Typer(help="GitHub repository inventory and auditor.", no_args_is_help=True)
@@ -36,6 +38,59 @@ def check_config() -> None:
     typer.echo(f"private key:     {key_source}")
     typer.echo(f"api url:         {settings.github_api_url}")
     typer.secho("Configuration OK", fg=typer.colors.GREEN)
+
+
+def _settings_or_exit() -> Settings:
+    try:
+        return get_settings()
+    except ValidationError as exc:
+        typer.secho(f"Configuration invalid:\n{exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+
+@app.command()
+def whoami() -> None:
+    """Check the GitHub App: identity, installation, permissions, org access, rate limits."""
+    from auditor.whoami import whoami as run_whoami
+
+    info = run_whoami(_settings_or_exit())
+    typer.echo(f"app:              {info.app_name} ({info.app_slug})")
+    typer.echo(f"installed on:     {info.account} ({info.repository_selection} repositories)")
+    typer.echo(f"repos visible:    {info.repo_count}")
+    typer.echo(f"org:              {info.org_login} (base permission: {info.org_base_permission})")
+    for resource, limit in info.rate_limits.items():
+        typer.echo(f"rate limit:       {resource} {limit['remaining']}/{limit['limit']} per hour")
+    typer.echo(
+        "permissions:      " + ", ".join(f"{k}={v}" for k, v in sorted(info.permissions.items()))
+    )
+    if info.problems:
+        for problem in info.problems:
+            typer.secho(f"PROBLEM: {problem}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1)
+    typer.secho("GitHub App OK", fg=typer.colors.GREEN)
+
+
+@app.command()
+def sync(
+    limit: int | None = typer.Option(
+        None, help="Only the first N repos (trial run; nothing org-wide is soft-deleted)."
+    ),
+) -> None:
+    """Collect from GitHub into the database (one full run)."""
+    from auditor.sync import run_sync
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    result = run_sync(_settings_or_exit(), limit=limit)
+    color = typer.colors.GREEN if result.status == "success" else typer.colors.YELLOW
+    typer.secho(
+        f"run {result.run_id}: {result.status} — {result.repos_deep_synced}/{result.repos_seen} "
+        f"repos, {result.branches_seen} branches, {len(result.errors)} errors",
+        fg=color,
+    )
+    for error in result.errors[:20]:
+        typer.secho(f"  {error}", fg=typer.colors.YELLOW, err=True)
+    if result.status != "success":
+        raise typer.Exit(code=2)
 
 
 def _database_url() -> str:
