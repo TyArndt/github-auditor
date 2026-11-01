@@ -4,7 +4,7 @@
 |---|---|
 | Status | v1 (Phase 2 delivered) |
 | Last updated | 2026-11-01 |
-| Source of truth | [src/auditor/db/models.py](../src/auditor/db/models.py) (tables), [db/views/](../db/views/) (reports) |
+| Source of truth | [db/migrations/](../db/migrations/) (tables, plain SQL), [db/views/](../db/views/) (reports) |
 | Related | [architecture.md](architecture.md), [solution-design.md](solution-design.md) |
 
 This document explains **what** is stored and **why** it's shaped this way. It's written for readers who are new to relational database design, so §1 covers the vocabulary first.
@@ -30,7 +30,7 @@ This document explains **what** is stored and **why** it's shaped this way. It's
 | **View** | A saved query that looks like a table. It stores no data and is computed when read | `reporting.v_repositories` |
 | **Upsert** | "Insert, or update if it already exists" (`INSERT ... ON CONFLICT DO UPDATE`) | How the collector writes every run |
 | **Transaction** | A group of changes that either all happen or none do | Each repo is saved in one transaction |
-| **Migration** | A versioned script that changes the schema (Alembic) | `db/migrations/versions/*.py` |
+| **Migration** | A numbered SQL file that creates or changes the schema, applied once per database, in order | `db/migrations/0001_initial_schema.sql` |
 
 ---
 
@@ -40,7 +40,7 @@ This document explains **what** is stored and **why** it's shaped this way. It's
 flowchart LR
     C["Collector<br/>(writes)"] -->|upsert| INV
     subgraph DB["PostgreSQL 17 — database 'auditor'"]
-        INV["schema: inventory<br/>22 tables<br/>system of record"]
+        INV["schema: inventory<br/>22 tables (+ schema_migrations)<br/>system of record"]
         REP["schema: reporting<br/>9 views<br/>report logic"]
         INV --> REP
     end
@@ -96,7 +96,7 @@ Read `A ||--o{ B` as "one A has zero or more Bs". `||--o|` means zero or one.
 ## 4. Tables by area
 
 ### 4.1 Common columns
-Most tables carry three tracking columns, provided by the `SoftDeleted` mixin in `models.py`:
+Most tables carry three tracking columns:
 
 | Column | Meaning |
 |---|---|
@@ -193,7 +193,7 @@ Then it recomputes `branch_protection_matches` for the repo (delete + insert), a
 
 ## 6. Reporting views
 
-Views live in [db/views/](../db/views/) as plain SQL files, numbered because later views build on earlier ones. They are rebuilt automatically by every `alembic upgrade` (see §7).
+Views live in [db/views/](../db/views/) as plain SQL files, numbered because later views build on earlier ones. They are rebuilt automatically by every `auditor db migrate` (see §7).
 
 | View | One row per | Answers (report #) |
 |---|---|---|
@@ -238,20 +238,44 @@ WHERE effective_permission = 'admin' AND NOT is_org_owner GROUP BY login ORDER B
 
 ---
 
-## 7. Changing the schema
+## 7. Migrations: how the schema is created and changed
+
+### Why migrations exist
+A new database is empty. Before the collector can save anything, the tables must be created. There will be several copies of this database (your laptop, a throwaway one in every CI run, and production in AWS), and they must all end up with **exactly** the same structure. So every schema change is written as a numbered SQL file, and each database remembers which files it has already run:
+
+```
+db/migrations/
+  0001_initial_schema.sql      creates all 22 tables (the starting point)
+  0002_add_something.sql       a later change, e.g. ALTER TABLE ... ADD COLUMN ...
+
+inventory.schema_migrations    version | filename | checksum | applied_at
+```
+
+`auditor db migrate` compares the two and applies only the files this database hasn't run yet, in number order. A brand-new database runs them all; production runs just the newest.
+
+> SQLAlchemy and Alembic (the usual Python tools for this) are not allowed by our Sonatype policy (CWE-502). The runner is ~150 lines of our own code in [src/auditor/db/migrate.py](../src/auditor/db/migrate.py) on top of `psycopg`, and CI fails if either package reappears in the lock files.
+
+### The rules
+1. **Never edit a migration that has been applied anywhere.** Add a new numbered file instead. The runner stores a SHA-256 checksum of each applied file and refuses to run if one has changed.
+2. **Forward only.** There are no "down" migrations. To undo something, write a new migration that reverses it. For disasters, restore from an RDS backup.
+3. **Numbers only go up.** A new file numbered lower than one already applied is rejected.
+
+### What `auditor db migrate` does, in ONE transaction (all-or-nothing)
+1. Takes a Postgres advisory lock, so two runners can't migrate at the same time.
+2. Verifies history: every applied version still has its file, with an unchanged checksum.
+3. Drops the `reporting` schema (all views).
+4. Runs each pending migration file and records it in `schema_migrations`.
+5. Recreates every view from `db/views/*.sql` (in filename order) and re-grants `auditor_read`.
+
+If any step fails, the whole run rolls back and the database is exactly as it was, views included. There's a test for this.
+
+### Everyday tasks
 
 | Change | Steps |
 |---|---|
-| Add/alter a **table or column** | 1. Edit `src/auditor/db/models.py` · 2. `alembic revision --autogenerate -m "describe change"` · 3. **Review** the generated file · 4. `alembic upgrade head` · 5. Add or adjust tests |
-| Add/alter a **view** | Edit or add `db/views/NN_name.sql` → `alembic upgrade head`. No migration file is needed |
-| Check models and migrations agree | `alembic check` (also runs in CI) |
-
-How upgrades work (`db/migrations/env.py`), all in **one transaction**:
-1. Drop the `reporting` schema (all views).
-2. Apply table migrations.
-3. If at the latest version, recreate every view from `db/views/*.sql` and re-grant `auditor_read`.
-
-Table changes therefore never get blocked by views that depend on them, and if anything fails, the whole upgrade rolls back. Downgrading below the latest version leaves the views absent until you upgrade again.
+| Add/alter a **table or column** | Create `db/migrations/NNNN_short_description.sql` (next number) → `auditor db migrate` → add/adjust tests |
+| Add/alter a **view** | Edit or add `db/views/NN_name.sql` → `auditor db migrate`. No migration file needed, since views are always rebuilt |
+| See what's applied | `auditor db status` (exit code 2 if anything is pending) |
 
 ---
 

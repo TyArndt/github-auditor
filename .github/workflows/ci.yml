@@ -25,13 +25,18 @@ jobs:
           --health-cmd "pg_isready -U auditor -d auditor"
           --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      DATABASE_URL: postgresql+psycopg://auditor:auditor@localhost:5432/auditor
-      TEST_DATABASE_URL: postgresql+psycopg://auditor:auditor@localhost:5432/auditor
+      DATABASE_URL: postgresql://auditor:auditor@localhost:5432/auditor
+      TEST_DATABASE_URL: postgresql://auditor:auditor@localhost:5432/auditor
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
+      - name: Block disallowed packages (Sonatype policy: SQLAlchemy/Alembic, CWE-502)
+        run: |
+          if grep -iE '^(sqlalchemy|alembic)==' requirements.txt requirements-dev.txt; then
+            echo "::error::SQLAlchemy/Alembic must not be dependencies"; exit 1
+          fi
       - run: pip install --require-hashes -r requirements-dev.txt
       - run: pip install --no-deps -e .
       - run: pip-audit --strict --require-hashes --disable-pip -r requirements.txt
@@ -40,5 +45,5 @@ jobs:
       - run: ruff format --check .
       - run: mypy src tests
       - run: pytest
-      - name: Migrations match models (no un-generated schema changes)
-        run: alembic upgrade head && alembic check
+      - name: Migrations apply cleanly and are idempotent
+        run: auditor db migrate && auditor db migrate && auditor db status

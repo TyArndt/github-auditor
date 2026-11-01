@@ -9,7 +9,7 @@ BASE = {
     "github_org": "acme",
     "github_app_id": 1,
     "github_installation_id": 2,
-    "database_url": "postgresql+psycopg://u:p@localhost/db",
+    "database_url": "postgresql://u:p@localhost/db",
 }
 
 
