@@ -39,11 +39,10 @@ pip install --no-deps -e .
 copy .env.example .env       # then fill in values (see §3.4)
 docker compose up -d db      # local PostgreSQL 17
 auditor check-config         # validates configuration
-pytest                       # tests
-ruff check . ; mypy src tests
+.\scripts\check.ps1          # same checks as CI: ruff, format, mypy, pytest
 ```
 
-Optional: run `pre-commit install` to run lint and type checks on every commit.
+Optional: run `git config core.hooksPath .githooks` once per clone to run lint, format, and type checks before every commit. This is a plain git hook; the `pre-commit` package isn't used because it depends on `virtualenv`, which is blocked.
 
 ### 2.1 Dependency management
 Versions are never hand-written. `pyproject.toml` lists package **names** only. `pip-compile` resolves the latest versions from PyPI into `requirements.txt` (runtime, used by the container) and `requirements-dev.txt` (dev/CI), with SHA-256 hashes. `pip-audit` then checks both files against known vulnerabilities.
@@ -53,6 +52,9 @@ Versions are never hand-written. `pyproject.toml` lists package **names** only. 
 | Update everything to latest and scan | `.\scripts\lock.ps1` |
 | Sync your venv to the lock files | `pip-sync requirements-dev.txt; pip install --no-deps -e .` |
 | Add a dependency | Add the name to `pyproject.toml`, then run `.\scripts\lock.ps1` |
+| A package fails the Sonatype scan | Add it to `blocked-packages.txt` with the reason, remove whatever pulls it in (find it under `# via` in the requirements file), run `.\scripts\lock.ps1` |
+
+**Blocked packages:** `blocked-packages.txt` lists packages our Sonatype policy rejects (currently SQLAlchemy, Alembic, virtualenv). `lock.ps1` and CI fail if any of them appears in a lock file, even as a dependency of a dependency.
 
 CI runs `pip-audit` on every PR and weekly. Dependabot opens weekly PRs for Python packages and GitHub Actions. Actions are pinned to commit SHAs.
 

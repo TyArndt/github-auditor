@@ -25,7 +25,8 @@ dev = [
     "mypy",
     "pip-tools",
     "pip-audit",
-    "pre-commit",
+    # No pre-commit: it pulls in virtualenv (blocked, see blocked-packages.txt).
+    # Git hook lives in .githooks/ instead.
 ]
 
 [project.scripts]
