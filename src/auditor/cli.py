@@ -12,6 +12,36 @@ from auditor.db import migrate as db_migrate
 app = typer.Typer(help="GitHub repository inventory and auditor.", no_args_is_help=True)
 db_app = typer.Typer(help="Database schema commands.", no_args_is_help=True)
 app.add_typer(db_app, name="db")
+metabase_app = typer.Typer(help="Metabase dashboards (Phase 5).", no_args_is_help=True)
+app.add_typer(metabase_app, name="metabase")
+
+
+@metabase_app.command("setup")
+def metabase_setup() -> None:
+    """Create/update the Metabase connection, questions, and dashboards from metabase/."""
+    from auditor.metabase import MetabaseError, MetabaseSettings, setup
+
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per API call is noise
+    try:
+        settings = MetabaseSettings()
+    except ValidationError as exc:
+        typer.secho(
+            "Set METABASE_ADMIN_EMAIL and METABASE_ADMIN_PASSWORD (env or .env).\n" + str(exc),
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1) from exc
+    try:
+        result = setup(settings)
+    except MetabaseError as exc:
+        typer.secho(f"Metabase setup failed: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(f"database id {result.database_id}, collection id {result.collection_id}")
+    typer.echo(f"{result.cards} questions up to date, {result.archived} archived")
+    for name, dashboard_id in result.dashboards.items():
+        typer.echo(f"  {name}: {result.url}/dashboard/{dashboard_id}")
+    typer.secho("Metabase OK", fg=typer.colors.GREEN)
 
 
 @app.command()
@@ -83,6 +113,7 @@ def sync(
     from auditor.sync import run_sync
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     result = run_sync(_settings_or_exit(), limit=limit)
     color = typer.colors.GREEN if result.status == "success" else typer.colors.YELLOW
     typer.secho(

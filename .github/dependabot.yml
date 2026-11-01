@@ -11,4 +11,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
-  # docker ecosystem added in Phase 3 when the collector Dockerfile exists
+  - package-ecosystem: docker-compose # Metabase image (tag + digest) in docker-compose.yml
+    directory: "/"
+    schedule:
+      interval: weekly
+  # docker ecosystem added in Phase 4 when the collector Dockerfile exists

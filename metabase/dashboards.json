@@ -1,0 +1,62 @@
+{
+  "collection": {
+    "name": "GitHub Auditor",
+    "description": "Managed by `auditor metabase setup` from the metabase/ folder in the repo. Edits made here are overwritten on the next setup; change the files instead."
+  },
+  "layout": "Every card is full width, stacked top to bottom in the order listed. Optional `height` (grid rows); defaults: scalar 3, chart 6, table 8.",
+  "dashboards": [
+    {
+      "name": "Repository Inventory",
+      "description": "Every repository: activity, Actions usage, owners. Data from the latest auditor sync.",
+      "cards": [
+        {"key": "inventory_active_repos", "name": "Active repositories", "display": "scalar"},
+        {"key": "inventory_archived_repos", "name": "Archived repositories", "display": "scalar"},
+        {"key": "inventory_without_workflows", "name": "Active repos without workflows", "display": "scalar"},
+        {"key": "inventory_without_codeowners", "name": "Active repos without CODEOWNERS", "display": "scalar"},
+        {"key": "inventory_push_age", "name": "Repositories by last push", "display": "bar",
+         "visualization_settings": {"graph.dimensions": ["Last push"], "graph.metrics": ["Repositories"]}},
+        {"key": "actions_adoption", "name": "GitHub Actions adoption", "display": "pie",
+         "visualization_settings": {"pie.dimension": "Actions", "pie.metric": "Repositories"}},
+        {"key": "inventory_repositories", "name": "All repositories", "display": "table", "height": 10},
+        {"key": "inventory_stale_repos", "name": "Stale repositories (no push in 180+ days)", "display": "table"}
+      ]
+    },
+    {
+      "name": "Branch Protection & Compliance",
+      "description": "Default-branch standard: at least 1 required review, force pushes blocked, deletion blocked (classic rule or active ruleset). Archived repos excluded.",
+      "cards": [
+        {"key": "compliance_pct", "name": "Default branch compliance %", "display": "scalar"},
+        {"key": "compliance_split", "name": "Compliant vs not compliant", "display": "pie",
+         "visualization_settings": {"pie.dimension": "Status", "pie.metric": "Repositories"}},
+        {"key": "compliance_failures", "name": "Why repositories fail", "display": "row",
+         "visualization_settings": {"graph.dimensions": ["Reason"], "graph.metrics": ["Repositories"]}},
+        {"key": "compliance_noncompliant", "name": "Non-compliant repositories", "display": "table"},
+        {"key": "compliance_trend", "name": "Compliance over time", "display": "line",
+         "visualization_settings": {"graph.dimensions": ["Date"], "graph.metrics": ["Compliance %"]}},
+        {"key": "protection_branches", "name": "All branches and their protection", "display": "table", "height": 10},
+        {"key": "protection_stale_branches", "name": "Stale branches (no commit in 90+ days)", "display": "table"}
+      ]
+    },
+    {
+      "name": "Access & Ownership",
+      "description": "Who can access each repository and why (team, nested team, direct grant, org owner), plus CODEOWNERS. The org base permission applies to all members on top of this.",
+      "cards": [
+        {"key": "access_org_owners", "name": "Org owners and base permission", "display": "table", "height": 5},
+        {"key": "access_admin_sprawl", "name": "Users with admin on the most repos", "display": "table", "height": 6},
+        {"key": "codeowners_by_team", "name": "CODEOWNERS owners by repo count", "display": "table", "height": 6},
+        {"key": "access_all", "name": "Repository access", "display": "table", "height": 10},
+        {"key": "access_direct_grants", "name": "Direct (non-team) access grants", "display": "table"},
+        {"key": "codeowners_missing", "name": "Repositories without CODEOWNERS", "display": "table"}
+      ]
+    },
+    {
+      "name": "Actions & Collector Health",
+      "description": "GitHub Actions workflows and their last runs; health of the auditor's own sync runs.",
+      "cards": [
+        {"key": "ops_last_sync", "name": "Hours since last sync", "display": "scalar"},
+        {"key": "ops_sync_runs", "name": "Recent sync runs", "display": "table"},
+        {"key": "actions_workflows", "name": "All workflows", "display": "table", "height": 10}
+      ]
+    }
+  ]
+}
