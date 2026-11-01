@@ -2,14 +2,11 @@
 
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Connection, insert
-
-from auditor.db.models import RepoDailySnapshot
-from tests.db.conftest import rows
+from tests.db.conftest import DB, rows
 from tests.db.factories import Seed
 
 
-def test_repository_rollups(db: Connection, seed: Seed) -> None:
+def test_repository_rollups(db: DB, seed: Seed) -> None:
     org = seed.org(base_permission="read")
     repo = seed.repo(org, "svc")
     rule = seed.classic_rule(
@@ -27,7 +24,7 @@ def test_repository_rollups(db: Connection, seed: Seed) -> None:
     owner = seed.user("owner_acme")
     seed.org_member(org, owner, role="admin")
 
-    r = rows(db, "SELECT * FROM reporting.v_repositories WHERE repo_id = :r", r=repo)[0]
+    r = rows(db, "SELECT * FROM reporting.v_repositories WHERE repo_id = %(r)s", r=repo)[0]
     assert (r["branch_count"], r["protected_branch_count"]) == (2, 1)
     assert r["default_branch_protected"] and r["default_branch_compliant"] is True
     assert (r["workflow_count"], r["active_workflow_count"], r["has_workflows"]) == (2, 1, True)
@@ -40,7 +37,7 @@ def test_repository_rollups(db: Connection, seed: Seed) -> None:
     assert r["days_since_push"] == 3
 
 
-def test_codeowners_missing_vs_not_checked(db: Connection, seed: Seed) -> None:
+def test_codeowners_missing_vs_not_checked(db: DB, seed: Seed) -> None:
     org = seed.org()
     checked = seed.repo(org, "checked")
     seed.codeowners(checked, None)
@@ -54,7 +51,7 @@ def test_codeowners_missing_vs_not_checked(db: Connection, seed: Seed) -> None:
     assert unchecked
 
 
-def test_daily_trend_excludes_archived_from_compliance(db: Connection, seed: Seed) -> None:
+def test_daily_trend_excludes_archived_from_compliance(db: DB, seed: Seed) -> None:
     org = seed.org()
     day = date(2026, 11, 1)
     base = {
@@ -76,10 +73,8 @@ def test_daily_trend_excludes_archived_from_compliance(db: Connection, seed: See
         (seed.repo(org, "c"), True, False),  # archived: excluded from %
     ]
     for repo_id, archived, compliant in snaps:
-        db.execute(
-            insert(RepoDailySnapshot).values(
-                **base, repo_id=repo_id, is_archived=archived, default_branch_compliant=compliant
-            )
+        seed.snapshot(
+            **base, repo_id=repo_id, is_archived=archived, default_branch_compliant=compliant
         )
 
     t = rows(db, "SELECT * FROM reporting.v_daily_trends")[0]

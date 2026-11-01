@@ -3,20 +3,19 @@
 from datetime import UTC, datetime
 from typing import Any
 
+import psycopg
 import pytest
-from sqlalchemy import Connection
-from sqlalchemy.exc import ProgrammingError
 
-from tests.db.conftest import rows
+from tests.db.conftest import DB, rows
 from tests.db.factories import Seed
 
 
-def access(db: Connection, repo_id: int) -> dict[str, dict[str, Any]]:
-    result = rows(db, "SELECT * FROM reporting.v_repo_access WHERE repo_id = :r", r=repo_id)
+def access(db: DB, repo_id: int) -> dict[str, dict[str, Any]]:
+    result = rows(db, "SELECT * FROM reporting.v_repo_access WHERE repo_id = %(r)s", r=repo_id)
     return {r["login"]: r for r in result}
 
 
-def test_nested_team_members_inherit_parent_access(db: Connection, seed: Seed) -> None:
+def test_nested_team_members_inherit_parent_access(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     eng = seed.team(org, "eng")
@@ -33,7 +32,7 @@ def test_nested_team_members_inherit_parent_access(db: Connection, seed: Seed) -
     assert a["bob_acme"]["sources"] == "team:eng via eng-backend-api (write)"
 
 
-def test_highest_permission_wins_and_all_sources_listed(db: Connection, seed: Seed) -> None:
+def test_highest_permission_wins_and_all_sources_listed(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     team = seed.team(org, "payments")
@@ -48,7 +47,7 @@ def test_highest_permission_wins_and_all_sources_listed(db: Connection, seed: Se
     assert a["sources"] == "direct (admin), team:payments (write)"
 
 
-def test_custom_role_ranks_by_base_permission(db: Connection, seed: Seed) -> None:
+def test_custom_role_ranks_by_base_permission(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     alice = seed.user("alice_acme")
@@ -59,7 +58,7 @@ def test_custom_role_ranks_by_base_permission(db: Connection, seed: Seed) -> Non
     assert a["sources"] == "direct (release-manager)"
 
 
-def test_org_owners_are_admin_everywhere(db: Connection, seed: Seed) -> None:
+def test_org_owners_are_admin_everywhere(db: DB, seed: Seed) -> None:
     org = seed.org()
     r1, r2 = seed.repo(org, "a"), seed.repo(org, "b")
     owner = seed.user("owner_acme")
@@ -73,7 +72,7 @@ def test_org_owners_are_admin_everywhere(db: Connection, seed: Seed) -> None:
         assert a["owner_acme"]["effective_permission"] == "admin"
 
 
-def test_removed_grants_and_memberships_are_excluded(db: Connection, seed: Seed) -> None:
+def test_removed_grants_and_memberships_are_excluded(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     team = seed.team(org, "old-team")
@@ -85,12 +84,12 @@ def test_removed_grants_and_memberships_are_excluded(db: Connection, seed: Seed)
     assert access(db, repo) == {}
 
 
-def test_reader_role_sees_views_but_not_tables(db: Connection, seed: Seed) -> None:
+def test_reader_role_sees_views_but_not_tables(db: DB, seed: Seed) -> None:
     seed.repo(seed.org(), "svc")
-    db.exec_driver_sql("SET LOCAL ROLE auditor_read")
+    db.execute("SET LOCAL ROLE auditor_read")
     assert rows(db, "SELECT name FROM reporting.v_repositories") == [{"name": "svc"}]
 
-    nested = db.begin_nested()
-    with pytest.raises(ProgrammingError, match="permission denied"):
-        db.exec_driver_sql("SELECT 1 FROM inventory.repositories")
-    nested.rollback()
+    db.execute("SAVEPOINT before_denied")
+    with pytest.raises(psycopg.errors.InsufficientPrivilege, match="permission denied"):
+        db.execute("SELECT 1 FROM inventory.repositories")
+    db.execute("ROLLBACK TO SAVEPOINT before_denied")

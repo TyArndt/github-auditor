@@ -3,9 +3,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import Connection
-
-from tests.db.conftest import rows
+from tests.db.conftest import DB, rows
 from tests.db.factories import Seed
 
 COMPLIANT_RULES: dict[str, dict[str, Any] | None] = {
@@ -15,13 +13,13 @@ COMPLIANT_RULES: dict[str, dict[str, Any] | None] = {
 }
 
 
-def compliance(db: Connection, repo_id: int) -> dict[str, Any]:
+def compliance(db: DB, repo_id: int) -> dict[str, Any]:
     return rows(
-        db, "SELECT * FROM reporting.v_default_branch_compliance WHERE repo_id = :r", r=repo_id
+        db, "SELECT * FROM reporting.v_default_branch_compliance WHERE repo_id = %(r)s", r=repo_id
     )[0]
 
 
-def test_classic_rule_meeting_minimum_is_compliant(db: Connection, seed: Seed) -> None:
+def test_classic_rule_meeting_minimum_is_compliant(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rule = seed.classic_rule(
@@ -34,7 +32,7 @@ def test_classic_rule_meeting_minimum_is_compliant(db: Connection, seed: Seed) -
     assert c["protection_source"] == "classic" and c["required_reviews"] == 2
 
 
-def test_classic_rule_allowing_force_push_fails(db: Connection, seed: Seed) -> None:
+def test_classic_rule_allowing_force_push_fails(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rule = seed.classic_rule(
@@ -50,7 +48,7 @@ def test_classic_rule_allowing_force_push_fails(db: Connection, seed: Seed) -> N
     assert c["failures"] == ["force push allowed"]
 
 
-def test_review_count_ignored_when_reviews_not_required(db: Connection, seed: Seed) -> None:
+def test_review_count_ignored_when_reviews_not_required(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rule = seed.classic_rule(
@@ -61,7 +59,7 @@ def test_review_count_ignored_when_reviews_not_required(db: Connection, seed: Se
     assert compliance(db, repo)["failures"] == ["no required review"]
 
 
-def test_unprotected_default_branch_lists_every_failure(db: Connection, seed: Seed) -> None:
+def test_unprotected_default_branch_lists_every_failure(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     seed.branch(repo)
@@ -71,7 +69,7 @@ def test_unprotected_default_branch_lists_every_failure(db: Connection, seed: Se
     assert c["failures"] == ["no required review", "force push allowed", "deletion allowed"]
 
 
-def test_active_ruleset_alone_is_compliant(db: Connection, seed: Seed) -> None:
+def test_active_ruleset_alone_is_compliant(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rs = seed.ruleset(org, "baseline", COMPLIANT_RULES)
@@ -81,7 +79,7 @@ def test_active_ruleset_alone_is_compliant(db: Connection, seed: Seed) -> None:
     assert c["is_compliant"] and c["protection_source"] == "ruleset"
 
 
-def test_evaluate_mode_ruleset_does_not_count(db: Connection, seed: Seed) -> None:
+def test_evaluate_mode_ruleset_does_not_count(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rs = seed.ruleset(org, "dry-run", COMPLIANT_RULES, enforcement="evaluate")
@@ -91,7 +89,7 @@ def test_evaluate_mode_ruleset_does_not_count(db: Connection, seed: Seed) -> Non
     assert not c["is_compliant"] and c["protection_source"] == "none"
 
 
-def test_classic_and_ruleset_combine_most_restrictive(db: Connection, seed: Seed) -> None:
+def test_classic_and_ruleset_combine_most_restrictive(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     # Classic gives the review; ruleset blocks force push + deletion. Together: compliant.
@@ -111,7 +109,7 @@ def test_classic_and_ruleset_combine_most_restrictive(db: Connection, seed: Seed
     assert c["is_compliant"] and c["protection_source"] == "both"
 
 
-def test_bypass_actors_are_informational_only(db: Connection, seed: Seed) -> None:
+def test_bypass_actors_are_informational_only(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     rs = seed.ruleset(org, "baseline", COMPLIANT_RULES, bypass_actors=[{"actor_type": "Team"}])
@@ -121,14 +119,14 @@ def test_bypass_actors_are_informational_only(db: Connection, seed: Seed) -> Non
     assert c["is_compliant"] and c["ruleset_has_bypass_actors"]
 
 
-def test_empty_repo_reports_missing_default_branch(db: Connection, seed: Seed) -> None:
+def test_empty_repo_reports_missing_default_branch(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "empty", default_branch=None, is_empty=True)
 
     assert compliance(db, repo)["failures"][0] == "default branch not found"
 
 
-def test_deleted_branches_and_repos_are_excluded(db: Connection, seed: Seed) -> None:
+def test_deleted_branches_and_repos_are_excluded(db: DB, seed: Seed) -> None:
     org = seed.org()
     repo = seed.repo(org, "svc")
     seed.branch(repo, "main")
@@ -139,6 +137,8 @@ def test_deleted_branches_and_repos_are_excluded(db: Connection, seed: Seed) -> 
     branches = rows(db, "SELECT repository, branch FROM reporting.v_branch_protection")
     assert branches == [{"repository": "acme/svc", "branch": "main"}]
     assert (
-        rows(db, "SELECT 1 FROM reporting.v_default_branch_compliance WHERE repo_id = :r", r=gone)
+        rows(
+            db, "SELECT 1 FROM reporting.v_default_branch_compliance WHERE repo_id = %(r)s", r=gone
+        )
         == []
     )

@@ -125,7 +125,7 @@ The collector reads `x-ratelimit-remaining` on every response and pauses when it
 ```
 src/auditor/
   config.py            settings from env / Secrets Manager
-  cli.py               `auditor whoami | sync | check-config`
+  cli.py               `auditor whoami | sync | check-config | db migrate | db status`
   github/
     auth.py            JWT + installation token cache
     client.py          httpx client: retries, rate limit, ETag cache
@@ -136,11 +136,12 @@ src/auditor/
     rulesets.py        ruleset condition matching (fnmatch, ~DEFAULT_BRANCH, ~ALL)
     evaluate.py        effective protection + compliance per branch
   codeowners.py        CODEOWNERS parser
-  load/                upserts, soft deletes, snapshots
-  db/models.py         SQLAlchemy models
+  load/                upserts, soft deletes, snapshots (psycopg, parameterized SQL)
+  db/migrate.py        forward-only SQL migration runner
+  db/views.py          rebuilds the reporting schema
 db/
-  migrations/          Alembic
-  views/               report views (SQL), applied by migrations
+  migrations/          NNNN_description.sql (tables)
+  views/               report views (SQL), rebuilt on every migrate
 ```
 
 ## 4. Data flow and freshness
@@ -253,5 +254,5 @@ Estimated monthly cost is mostly RDS, NAT, and an always-on Metabase. An approxi
 | D6 | Access stored as explicit grants; baseline applied in views | Avoids member × repo row explosion |
 | D7 | Protection computed by the collector and stored per branch | Fast reports; validated against GitHub's API by sampling |
 | D8 | ECS Fargate scheduled task | No servers; pay only while running; same container locally and in AWS |
-| D9 | Python 3.14 + SQLAlchemy/Alembic + httpx | Readable, strong data tooling, managed migrations |
+| D9 | Python 3.14 + psycopg 3 (no ORM) + httpx | SQLAlchemy/Alembic are blocked by Sonatype policy (CWE-502). Plain parameterized SQL plus an in-house SQL migration runner: no extra dependency to vet, and the schema is readable as SQL |
 | D10 | Metabase first, custom UI later | Value in days; the UI is built once requirements are proven |

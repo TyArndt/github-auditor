@@ -11,8 +11,8 @@ dependencies = [
     "pyjwt[crypto]",
     "pydantic",
     "pydantic-settings",
-    "sqlalchemy",
-    "alembic",
+    # SQLAlchemy/Alembic are not allowed (Sonatype policy, CWE-502). Use psycopg directly;
+    # migrations are plain SQL run by auditor.db.migrate.
     "psycopg[binary]",
     "typer",
 ]

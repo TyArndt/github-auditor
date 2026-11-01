@@ -1,1 +1,1 @@
-"""Database models and helpers. Design rationale: docs/database-design.md."""
+"""Database access (psycopg), migrations, and views. Design: docs/database-design.md."""

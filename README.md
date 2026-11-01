@@ -36,7 +36,7 @@ docs/               design docs
 src/auditor/        Python package (collector, CLI)
 tests/              pytest suite
 scripts/            dev helpers (lock.ps1)
-db/migrations/      Alembic migrations (tables in schema `inventory`)
+db/migrations/      numbered SQL migrations (tables in schema `inventory`), run by `auditor db migrate`
 db/views/           report views (schema `reporting`), rebuilt on every upgrade
 infra/terraform/    AWS infrastructure (Phase 4)
 api/, web/          custom web app (Phase 6)

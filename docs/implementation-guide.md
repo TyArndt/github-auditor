@@ -100,7 +100,7 @@ GITHUB_ORG=your-org
 GITHUB_APP_ID=123456
 GITHUB_INSTALLATION_ID=78901234
 GITHUB_PRIVATE_KEY_PATH=C:\Users\you\.secrets\repo-auditor.pem
-DATABASE_URL=postgresql+psycopg://auditor:auditor@localhost:5432/auditor
+DATABASE_URL=postgresql://auditor:auditor@localhost:5432/auditor
 ```
 
 ### 3.5 Verify **(Phase 1 — pending)**
@@ -122,17 +122,17 @@ Design and rationale: **[database-design.md](database-design.md)**.
 
 ```powershell
 docker compose up -d db          # local PostgreSQL 17
-alembic upgrade head             # create/upgrade tables in `inventory` + rebuild views in `reporting`
-alembic check                    # confirm models.py and migrations agree
-pytest tests/db                  # view logic tests (creates and drops a throwaway database)
+auditor db migrate               # apply pending db/migrations/*.sql + rebuild views in `reporting`
+auditor db status                # list applied / pending migrations (exit code 2 if pending)
+pytest tests/db                  # view + migration tests (creates and drops a throwaway database)
 docker compose exec db psql -U auditor -d auditor   # poke around: \dt inventory.*  \dv reporting.*
 ```
 
 | Task | How |
 |---|---|
-| Change a table | Edit `src/auditor/db/models.py` → `alembic revision --autogenerate -m "..."` → review → `alembic upgrade head` |
-| Change a report view | Edit `db/views/NN_name.sql` → `alembic upgrade head` (no migration needed) |
-| Reset local DB | `docker compose down -v; docker compose up -d db; alembic upgrade head` |
+| Change a table | Add `db/migrations/NNNN_description.sql` (next number) → `auditor db migrate`. **Never edit an applied migration**; the runner refuses changed checksums |
+| Change a report view | Edit `db/views/NN_name.sql` → `auditor db migrate` (no migration needed) |
+| Reset local DB | `docker compose down -v; docker compose up -d db; auditor db migrate` |
 
 Roles: `auditor` owns everything (collector and migrations). `auditor_read` is a NOLOGIN group with `SELECT` on `reporting.*` only. Report tools log in as a user that is a member of it (created in Phase 4).
 
@@ -169,7 +169,7 @@ Roles: `auditor` owns everything (collector and migrations). `auditor_read` is a
 
 ## 11. Extending: adding a new data point **(pattern, finalized in Phase 3)**
 1. Add the field to the GraphQL query or REST call in `src/auditor/collect/<domain>.py`.
-2. Add a column with an Alembic migration (`alembic revision -m "add X"`).
+2. Add a column with a new migration file (`db/migrations/NNNN_add_x.sql`: `ALTER TABLE ... ADD COLUMN ...`).
 3. Map it in the loader.
 4. Expose it in the relevant view under `db/views/`.
 5. Add a test with a recorded API response.
