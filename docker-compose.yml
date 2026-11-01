@@ -19,7 +19,12 @@ services:
       timeout: 3s
       retries: 10
 
-  # One-shot: creates Metabase's app database and the read-only reporting login.
+  # One-shot, LOCAL DEVELOPMENT ONLY. Idempotent; runs on every `--profile reports up`.
+  #   metabase         owns Metabase's own app database (users, questions, dashboards)
+  #   metabase_reader  the login Metabase READS our data with; member of auditor_read, which
+  #                    can SELECT the `reporting` views only (never the `inventory` tables)
+  # The SQL is inline (no bind mount): host file sharing on Windows can hang container
+  # creation. In AWS (Phase 4) these roles get generated passwords instead.
   db-setup:
     image: postgres:17
     profiles: ["reports"]
@@ -32,9 +37,20 @@ services:
       # (e.g. a DB tool left "idle in transaction"), becomes an error within seconds.
       PGCONNECT_TIMEOUT: "10"
       PGOPTIONS: "-c lock_timeout=15s -c statement_timeout=60s"
-    volumes:
-      - ./db/local/metabase-setup.sql:/setup.sql:ro
-    command: ["psql", "-h", "db", "-U", "auditor", "-d", "auditor", "-v", "ON_ERROR_STOP=1", "-q", "-f", "/setup.sql"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        psql -h db -U auditor -d auditor -v ON_ERROR_STOP=1 -q <<'SQL'
+        SELECT 'CREATE ROLE metabase LOGIN PASSWORD ''metabase'''
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'metabase')\gexec
+        SELECT 'CREATE DATABASE metabase OWNER metabase'
+        WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'metabase')\gexec
+        SELECT 'CREATE ROLE auditor_read NOLOGIN'
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'auditor_read')\gexec
+        SELECT 'CREATE ROLE metabase_reader LOGIN PASSWORD ''metabase_reader'''
+        WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'metabase_reader')\gexec
+        GRANT auditor_read TO metabase_reader;
+        SQL
     restart: "no"
 
   metabase:

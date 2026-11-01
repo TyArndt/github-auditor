@@ -216,7 +216,7 @@ Metabase runs in Docker next to PostgreSQL and reads **only the `reporting` view
    ```
 3. Open the URL it prints and log in with the admin email/password.
 
-`docker compose --profile reports up` also runs `db-setup` once, which creates Metabase's own database and the `metabase_reader` login (see `db/local/metabase-setup.sql`). It's idempotent.
+`docker compose --profile reports up` also runs `db-setup` once, which creates Metabase's own database and the `metabase_reader` login (the SQL is inline in `docker-compose.yml`, with no file mounted from your disk). It's idempotent.
 
 ### 7.2 Dashboards
 All are in the **GitHub Auditor** collection:
@@ -240,6 +240,7 @@ Tests check that every query runs as the read-only role and that cards don't ove
 |---|---|
 | `db-setup` exits with `canceling statement due to lock timeout` | Another session holds a lock on roles/databases, usually a DB tool (DBeaver, pgAdmin) left **idle in transaction**. Find it with the query below, commit/close it, then `docker compose --profile reports up -d` again |
 | `db-setup` exits with `timeout expired` / `could not connect` | Can't reach the `db` container: check `docker compose ps` and that `db` is healthy |
+| `up` sits at `Creating`/`Recreating` for minutes | Docker itself is stuck, usually removing an old hung container. Ctrl+C, then `docker rm -f <container>`; if that hangs too, restart Docker Desktop |
 | Metabase page doesn't load | It takes about a minute on first start: `docker compose ps` until `metabase` is `healthy`; `docker logs <metabase container>` for errors |
 | Image pull fails with a certificate error | Docker Desktop needs the corporate CA (SSL inspection); see Docker Desktop's proxy/certificate settings |
 

@@ -52,7 +52,6 @@ scripts/            dev helpers (lock.ps1, check.ps1)
 .githooks/          optional git pre-commit hook
 db/migrations/      numbered SQL migrations (tables in schema `inventory`), run by `auditor db migrate`
 db/views/           report views (schema `reporting`), rebuilt on every upgrade
-db/local/           local-only database setup (Metabase roles)
 metabase/           dashboards as code: sql/ queries + dashboards.json layout
 infra/terraform/    AWS infrastructure (Phase 4)
 api/, web/          custom web app (Phase 6)
