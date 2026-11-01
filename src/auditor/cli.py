@@ -64,6 +64,8 @@ def whoami() -> None:
     typer.echo(
         "permissions:      " + ", ".join(f"{k}={v}" for k, v in sorted(info.permissions.items()))
     )
+    for warning in info.warnings:
+        typer.secho(f"WARNING: {warning}", fg=typer.colors.YELLOW, err=True)
     if info.problems:
         for problem in info.problems:
             typer.secho(f"PROBLEM: {problem}", fg=typer.colors.RED, err=True)

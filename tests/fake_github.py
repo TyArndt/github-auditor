@@ -12,6 +12,8 @@ Plug it into httpx with `httpx.MockTransport(fake.handler)`. The default scenari
   teams   eng (granted write on svc) <- child eng-backend (member: alice_acme)
 
 Every GET carries an ETag; If-None-Match with the current ETag returns 304.
+`ruleset_details_forbidden = True` makes the baseline ruleset's details return 403 (as seen
+in a real org); the collector must then fall back to /rules/branches/{default}.
 Tests mutate the scenario between runs (e.g. delete a branch) to test soft deletes.
 """
 
@@ -22,6 +24,8 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
+
+FORBIDDEN = object()  # _rest() sentinel -> 403 "Resource not accessible by integration"
 
 NOW = datetime.now(UTC)
 RECENT = (NOW - timedelta(days=2)).isoformat()
@@ -135,7 +139,10 @@ class FakeGitHub:
             "legacy": [_ref("master", "c" * 40)],
             "empty": [],
         }
-        self.org_ruleset = {
+        # True reproduces a real-org case: an org ruleset (with a required-workflow rule) whose
+        # details return 403 on both the org and repo endpoints.
+        self.ruleset_details_forbidden = False
+        self.org_ruleset: dict[str, Any] = {
             "id": 9001,
             "node_id": "RRS_9001",
             "name": "baseline",
@@ -269,6 +276,8 @@ class FakeGitHub:
         body = self._rest(path, request)
         if body is None:
             return httpx.Response(404, json={"message": "Not Found"})
+        if body is FORBIDDEN:
+            return httpx.Response(403, json={"message": "Resource not accessible by integration"})
         etag = '"' + hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest() + '"'
         if request.headers.get("if-none-match") == etag:
             return httpx.Response(304, headers={"etag": etag})
@@ -283,7 +292,7 @@ class FakeGitHub:
         if path == "/orgs/acme/rulesets":
             return [{k: self.org_ruleset[k] for k in ("id", "name", "source_type", "enforcement")}]
         if path == "/orgs/acme/rulesets/9001":
-            return self.org_ruleset
+            return FORBIDDEN if self.ruleset_details_forbidden else self.org_ruleset
         if team := re.match(r"^/orgs/acme/teams/([^/]+)/repos$", path):
             return self.team_repos.get(team.group(1))
         if repo:
@@ -297,6 +306,10 @@ class FakeGitHub:
                         "enforcement": "active",
                     }
                 ]
+            if rest == "rulesets/9001":
+                return FORBIDDEN if self.ruleset_details_forbidden else self.org_ruleset
+            if branch := re.match(r"^rules/branches/(.+)$", rest):
+                return self._branch_rules(name, branch.group(1))
             if rest == "collaborators":
                 return self.collaborators.get(name, [])
             if rest == "actions/workflows":
@@ -309,6 +322,23 @@ class FakeGitHub:
                 run = self.workflow_last_run.get(int(wf.group(1)))
                 return {"total_count": int(run is not None), "workflow_runs": [run] if run else []}
         return None  # includes /orgs/acme/properties/values -> 404 (feature unavailable)
+
+    def _branch_rules(self, repo_name: str, branch: str) -> list[dict[str, Any]]:
+        """GitHub's own evaluation: active rules on a branch, tagged with their ruleset."""
+        repo = next(r for r in self.repos if r["name"] == repo_name)
+        default = (repo.get("defaultBranchRef") or {}).get("name")
+        if branch != default:  # the baseline ruleset targets ~DEFAULT_BRANCH only
+            return []
+        return [
+            {
+                "type": rule["type"],
+                **({"parameters": rule["parameters"]} if "parameters" in rule else {}),
+                "ruleset_source_type": "Organization",
+                "ruleset_source": "acme",
+                "ruleset_id": self.org_ruleset["id"],
+            }
+            for rule in self.org_ruleset["rules"]
+        ]
 
     def _graphql(self, payload: dict[str, Any]) -> dict[str, Any]:
         query, variables = payload["query"], payload.get("variables") or {}
