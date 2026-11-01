@@ -1,0 +1,14 @@
+version: 2
+updates:
+  - package-ecosystem: pip # updates the pip-compile lock files
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      python-deps:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+  # docker ecosystem added in Phase 3 when the collector Dockerfile exists

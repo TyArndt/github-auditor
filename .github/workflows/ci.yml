@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1" # weekly: re-run pip-audit to catch newly disclosed CVEs
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: auditor
+          POSTGRES_PASSWORD: auditor
+          POSTGRES_DB: auditor
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U auditor -d auditor"
+          --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://auditor:auditor@localhost:5432/auditor
+      TEST_DATABASE_URL: postgresql+psycopg://auditor:auditor@localhost:5432/auditor
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14"
+      - run: pip install --require-hashes -r requirements-dev.txt
+      - run: pip install --no-deps -e .
+      - run: pip-audit --strict --require-hashes --disable-pip -r requirements.txt
+      - run: pip-audit --strict --require-hashes --disable-pip -r requirements-dev.txt
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy src tests
+      - run: pytest
+      - name: Migrations match models (no un-generated schema changes)
+        run: alembic upgrade head && alembic check
