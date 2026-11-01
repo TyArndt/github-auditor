@@ -238,6 +238,7 @@ Estimated monthly cost is mostly RDS, NAT, and an always-on Metabase. An approxi
 
 - **Least privilege:** the App is read-only. The collector's DB role can write. Metabase and the API use a separate **read-only DB role** that can only `SELECT` from views.
 - **Secrets** live only in Secrets Manager, injected into the task at runtime and never baked into images or committed to git. `.pem` and `.env` files are gitignored.
+- **TLS:** certificates are always verified. On the corporate network, HTTPS is decrypted by SSL inspection, so the collector trusts the company root CA (`CA_BUNDLE`) *in addition to* the public CAs. See implementation-guide §2.2.
 - **Network:** no public ingress until Okta SSO is in place (Phase 8). The database is never public.
 - **Data sensitivity:** the data includes user logins and access levels, which is internal-confidential. Okta SSO plus group-based authorization comes in Phase 8.
 - **Audit:** `sync_runs` plus CloudWatch logs. All GitHub calls appear under the App's identity in the GitHub audit log.

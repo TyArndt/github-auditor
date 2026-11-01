@@ -37,6 +37,7 @@ def check_config() -> None:
     typer.echo(f"installation id: {settings.github_installation_id}")
     typer.echo(f"private key:     {key_source}")
     typer.echo(f"api url:         {settings.github_api_url}")
+    typer.echo(f"extra CA bundle: {settings.ca_bundle or '(none: public CAs only)'}")
     typer.secho("Configuration OK", fg=typer.colors.GREEN)
 
 

@@ -8,6 +8,7 @@ requires-python = ">=3.14"
 # versions into requirements*.txt (hashed), then `pip-audit` them. See README.
 dependencies = [
     "httpx",
+    "certifi",  # public CA list; already an httpx dependency, imported directly for ssl_context
     "pyjwt[crypto]",
     "pydantic",
     "pydantic-settings",

@@ -33,7 +33,9 @@ class WhoAmI:
 
 
 def whoami(settings: Settings, http: Any = None) -> WhoAmI:
-    http = http or make_http(settings.github_api_url, settings.github_api_version)
+    http = http or make_http(
+        settings.github_api_url, settings.github_api_version, settings.ca_bundle
+    )
     auth = AppAuth(
         settings.github_app_id, settings.github_installation_id, settings.private_key_pem(), http
     )
