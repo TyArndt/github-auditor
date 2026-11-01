@@ -5,7 +5,7 @@ from typing import Any
 
 from auditor.config import Settings
 from auditor.github.auth import AppAuth
-from auditor.github.client import GitHubClient, make_http
+from auditor.github.client import GitHubClient, NotFoundError, make_http
 
 # Installation permissions the collector needs (all read-only).
 REQUIRED_PERMISSIONS = {
@@ -29,11 +29,14 @@ class WhoAmI:
     org_base_permission: str | None
     rate_limits: dict[str, dict[str, int]]
     permissions: dict[str, str]
-    problems: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)  # sync can't work properly
+    warnings: list[str] = field(default_factory=list)  # sync works, with reduced detail
 
 
 def whoami(settings: Settings, http: Any = None) -> WhoAmI:
-    http = http or make_http(settings.github_api_url, settings.github_api_version)
+    http = http or make_http(
+        settings.github_api_url, settings.github_api_version, settings.ca_bundle
+    )
     auth = AppAuth(
         settings.github_app_id, settings.github_installation_id, settings.private_key_pem(), http
     )
@@ -67,6 +70,17 @@ def whoami(settings: Settings, http: Any = None) -> WhoAmI:
     if org.get("default_repository_permission") is None:
         problems.append("can't read org base permission (needs organization_administration: read)")
 
+    warnings = []
+    try:
+        client.rest(f"/orgs/{settings.github_org}/rulesets", {"per_page": 1})
+    except NotFoundError as exc:
+        warnings.append(
+            f"org ruleset listing not permitted (HTTP {exc.status}). Expected: GitHub requires "
+            "Organization Administration: WRITE for it, which this read-only App doesn't need. "
+            "Rulesets that apply to repos are collected per repo; only org rulesets targeting "
+            "no repo are missed. Do NOT grant write access to fix this."
+        )
+
     return WhoAmI(
         app_name=app.json()["name"],
         app_slug=app.json()["slug"],
@@ -82,4 +96,5 @@ def whoami(settings: Settings, http: Any = None) -> WhoAmI:
         },
         permissions=permissions,
         problems=problems,
+        warnings=warnings,
     )

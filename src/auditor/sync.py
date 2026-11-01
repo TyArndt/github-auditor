@@ -52,7 +52,7 @@ class SyncResult:
 
 
 def build_client(settings: Settings, etags: EtagCache | None = None) -> GitHubClient:
-    http = make_http(settings.github_api_url, settings.github_api_version)
+    http = make_http(settings.github_api_url, settings.github_api_version, settings.ca_bundle)
     auth = AppAuth(
         settings.github_app_id,
         settings.github_installation_id,

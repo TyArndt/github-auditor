@@ -34,7 +34,7 @@ git clone <this repo>
 cd github_auditor
 py -3.14 -m venv .venv
 .\.venv\Scripts\Activate.ps1                      # all later commands assume the venv is active
-pip install --require-hashes -r requirements-dev.txt
+python.exe  -m pip install --require-hashes -r requirements-dev.txt
 pip install --no-deps -e .
 copy .env.example .env       # then fill in values (see §3.4)
 docker compose up -d db      # local PostgreSQL 17
@@ -58,6 +58,19 @@ Versions are never hand-written. `pyproject.toml` lists package **names** only. 
 
 CI runs `pip-audit` on every PR and weekly. Dependabot opens weekly PRs for Python packages and GitHub Actions. Actions are pinned to commit SHAs.
 
+### 2.2 Corporate SSL inspection (TLS decryption)
+Our network decrypts and re-signs HTTPS traffic with a company root CA. Anything that makes HTTPS calls must trust that root, or it fails with `CERTIFICATE_VERIFY_FAILED`. Get the company CA bundle (PEM format) from IT and store it **outside the repo**, e.g. `C:\Users\you\.secrets\corp-ca-bundle.pem`. Certificate files (`*.pem`, `*.crt`, `*.cer`) are gitignored.
+
+| Tool | How it trusts the bundle |
+|---|---|
+| **auditor** (`whoami`, `sync`) | `CA_BUNDLE=C:\...\corp-ca-bundle.pem` in `.env`. It is trusted **in addition to** the public CAs, so hosts excluded from inspection keep working. TLS verification is never turned off. `auditor check-config` shows the active bundle |
+| **pip** (installs, `pip-sync`, `pip-compile`) | Once per machine: `python -m pip config set global.cert C:\...\corp-ca-bundle.pem` |
+| **pip-audit** (in `lock.ps1`) | `$env:REQUESTS_CA_BUNDLE = "C:\...\corp-ca-bundle.pem"` before running `.\scripts\lock.ps1` (pip-audit uses `requests`, which reads this variable) |
+
+> Note: `pip config set global.cert` and `REQUESTS_CA_BUNDLE` make those tools trust **only** that file. If installs then fail for hosts that aren't inspected, ask IT for a bundle that also contains the public roots, or append the contents of `python -m certifi` (the path to the public bundle) to a copy of the corporate one.
+
+**In AWS (Phase 4):** traffic from ECS to GitHub normally leaves through a NAT gateway and is *not* inspected, so leave `CA_BUNDLE` unset there. If your AWS egress is routed through an inspecting firewall, set `CA_BUNDLE` in the task and include the bundle in the image or mount it.
+
 ---
 
 ## 3. Phase 1 — Create the GitHub App
@@ -79,6 +92,8 @@ CI runs `pip-audit` on every PR and weekly. Dependabot opens weekly PRs for Pyth
    - Administration
    - Members
    - Custom properties (optional, future-proofing)
+
+   > **Leave Administration at Read-only.** GitHub requires *Read and write* to call the org ruleset endpoints, so `auditor whoami` shows a WARNING that org rulesets can't be listed. That's expected and harmless: rulesets are collected per repo, which needs only read access. Granting write would let the App change org settings.
 5. **Where can this GitHub App be installed?** → **Only on this account**.
 6. Click **Create GitHub App**.
 
@@ -102,6 +117,7 @@ GITHUB_ORG=your-org
 GITHUB_APP_ID=123456
 GITHUB_INSTALLATION_ID=78901234
 GITHUB_PRIVATE_KEY_PATH=C:\Users\you\.secrets\repo-auditor.pem
+CA_BUNDLE=C:\Users\you\.secrets\corp-ca-bundle.pem   # SSL inspection, see §2.2
 DATABASE_URL=postgresql://auditor:auditor@localhost:5432/auditor
 ```
 

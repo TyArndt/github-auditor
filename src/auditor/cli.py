@@ -37,6 +37,7 @@ def check_config() -> None:
     typer.echo(f"installation id: {settings.github_installation_id}")
     typer.echo(f"private key:     {key_source}")
     typer.echo(f"api url:         {settings.github_api_url}")
+    typer.echo(f"extra CA bundle: {settings.ca_bundle or '(none: public CAs only)'}")
     typer.secho("Configuration OK", fg=typer.colors.GREEN)
 
 
@@ -63,6 +64,8 @@ def whoami() -> None:
     typer.echo(
         "permissions:      " + ", ".join(f"{k}={v}" for k, v in sorted(info.permissions.items()))
     )
+    for warning in info.warnings:
+        typer.secho(f"WARNING: {warning}", fg=typer.colors.YELLOW, err=True)
     if info.problems:
         for problem in info.problems:
             typer.secho(f"PROBLEM: {problem}", fg=typer.colors.RED, err=True)

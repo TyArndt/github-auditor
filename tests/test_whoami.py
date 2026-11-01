@@ -18,9 +18,17 @@ def _settings(pem: str) -> Settings:
     )
 
 
-def _http(installation: dict[str, Any], base_permission: str | None = "read") -> httpx.Client:
+def _http(
+    installation: dict[str, Any],
+    base_permission: str | None = "read",
+    org_rulesets_readable: bool = True,
+) -> httpx.Client:
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if path == "/orgs/acme/rulesets":
+            if org_rulesets_readable:
+                return httpx.Response(200, json=[])
+            return httpx.Response(403, json={"message": "Resource not accessible by integration"})
         expires = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
         routes: dict[str, Any] = {
             "/app": {"name": "Acme Repo Auditor", "slug": "acme-repo-auditor"},
@@ -47,8 +55,19 @@ def test_correct_setup_has_no_problems(private_key_pem: str) -> None:
         "permissions": dict(REQUIRED_PERMISSIONS),
     }
     info = whoami(_settings(private_key_pem), http=_http(inst))
-    assert info.problems == []
+    assert info.problems == [] and info.warnings == []
     assert (info.repo_count, info.rate_limits["core"]["limit"]) == (2534, 15000)
+
+
+def test_unreadable_org_rulesets_is_a_warning_not_a_problem(private_key_pem: str) -> None:
+    inst = {
+        "account": {"login": "acme"},
+        "repository_selection": "all",
+        "permissions": dict(REQUIRED_PERMISSIONS),
+    }
+    info = whoami(_settings(private_key_pem), http=_http(inst, org_rulesets_readable=False))
+    assert info.problems == []
+    assert len(info.warnings) == 1 and "HTTP 403" in info.warnings[0]
 
 
 def test_missing_permission_and_selected_repos_are_reported(private_key_pem: str) -> None:

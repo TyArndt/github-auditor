@@ -11,12 +11,15 @@ Thread-safe: one client is shared by all collector worker threads.
 """
 
 import re
+import ssl
 import threading
 import time
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
+import certifi
 import httpx
 
 from auditor.github.auth import AppAuth
@@ -59,9 +62,28 @@ class ApiStats:
                 setattr(self, name, getattr(self, name) + value)
 
 
-def make_http(api_url: str, api_version: str = DEFAULT_API_VERSION, **kwargs: Any) -> httpx.Client:
+def ssl_context(ca_bundle: Path | None = None) -> ssl.SSLContext:
+    """Trust the public CAs (certifi) PLUS an optional extra bundle.
+
+    The extra bundle is for corporate SSL inspection: inspected traffic is re-signed by the
+    company's root CA, while hosts excluded from inspection still present public certificates,
+    so both must be trusted. Verification is never disabled.
+    """
+    context = ssl.create_default_context(cafile=certifi.where())
+    if ca_bundle is not None:
+        context.load_verify_locations(cafile=str(ca_bundle))
+    return context
+
+
+def make_http(
+    api_url: str,
+    api_version: str = DEFAULT_API_VERSION,
+    ca_bundle: Path | None = None,
+    **kwargs: Any,
+) -> httpx.Client:
     return httpx.Client(
         base_url=api_url,
+        verify=ssl_context(ca_bundle),
         headers={
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": api_version,

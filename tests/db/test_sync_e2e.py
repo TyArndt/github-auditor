@@ -136,6 +136,30 @@ def test_limited_run_never_deletes_outside_its_scope(db_url: str, private_key_pe
     assert all(g["deleted_at"] is None for g in grants)
 
 
+def test_unreadable_org_ruleset_falls_back_to_branch_rules(
+    db_url: str, private_key_pem: str
+) -> None:
+    """Real-org case: org ruleset details -> 403 'Resource not accessible by integration'."""
+    fake = FakeGitHub()
+    fake.ruleset_details_forbidden = True
+    result = _sync(fake, db_url, private_key_pem)
+    assert result.status == "success", result.errors
+
+    compliance = {
+        r["repository"]: (r["is_compliant"], r["protection_source"])
+        for r in q(db_url, "SELECT * FROM reporting.v_default_branch_compliance")
+    }
+    assert compliance["acme/svc"] == (True, "both")
+    assert compliance["acme/legacy"] == (True, "ruleset")  # rules came from rules/branches
+
+    ruleset = q(db_url, "SELECT raw, conditions FROM inventory.rulesets WHERE id = 9001")[0]
+    assert ruleset["raw"]["details_unavailable"] is True
+    assert ruleset["conditions"]["ref_name"]["include"] == ["~DEFAULT_BRANCH"]
+    rules = q(db_url, "SELECT rule_type FROM inventory.ruleset_rules WHERE ruleset_id = 9001")
+    assert {r["rule_type"] for r in rules} == {"pull_request", "non_fast_forward", "deletion"}
+    assert any("/rules/branches/" in str(r.url) for r in fake.requests)
+
+
 def test_one_failing_repo_marks_run_partial(db_url: str, private_key_pem: str) -> None:
     fake = FakeGitHub()
     original = fake._rest

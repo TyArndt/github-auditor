@@ -2,6 +2,9 @@
 .env
 *.pem
 *.key
+*.crt
+*.cer
+*.p7b
 
 # Python
 .venv/

@@ -5,6 +5,7 @@ the records to `load.py`. Each `parse_*` function is pure, so tests can feed it
 recorded API responses.
 """
 
+import logging
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
@@ -13,6 +14,8 @@ from typing import Any
 from auditor.codeowners import CODEOWNERS_PATHS
 from auditor.github import queries
 from auditor.github.client import GitHubClient, NotFoundError
+
+log = logging.getLogger(__name__)
 
 WORKFLOW_RUN_WINDOW_DAYS = 30
 MAX_RUN_PAGES = 5  # cap per repo; counts become NULL (unknown) beyond this
@@ -444,7 +447,23 @@ def parse_ruleset(data: dict[str, Any]) -> RulesetRec:
 
 
 class RulesetFetcher:
-    """Fetches ruleset details once per run, however many repos share them."""
+    """Fetches ruleset details once per run, however many repos share them.
+
+    Per repo, details are read through the REPOSITORY endpoint
+    (/repos/{repo}/rulesets/{id}?includes_parents=true), which also serves inherited
+    org/enterprise rulesets and needs only Repository -> Metadata: read. (The equivalent
+    org endpoint needs Organization -> Administration: WRITE, which caused a real-org 403
+    "Resource not accessible by integration".)
+
+    Safety net: if a ruleset still can't be read, fall back to GitHub's own evaluation of
+    the DEFAULT BRANCH (/repos/{repo}/rules/branches/{branch}, Metadata: read), which lists
+    each active rule with the ruleset it comes from. Such rulesets are recorded with
+    conditions "~DEFAULT_BRANCH" only and raw.details_unavailable = true: exact for the
+    default-branch compliance report; other branches can be under-reported.
+
+    Note: GitHub omits `bypass_actors` unless the caller can edit the ruleset, so the
+    bypass flag in reports can under-report.
+    """
 
     def __init__(self, client: GitHubClient, org: str) -> None:
         self.client = client
@@ -453,31 +472,105 @@ class RulesetFetcher:
         self._lock = threading.Lock()
 
     def org_rulesets(self) -> list[RulesetRec]:
+        """Org-level rulesets, including ones that target no repo yet.
+
+        GitHub requires Organization -> Administration: WRITE for the /orgs/{org}/rulesets
+        endpoints (per GitHub's published permission data). This App is read-only by design,
+        so a 403 here is expected: every ruleset that applies to a repo is still collected
+        through that repo (Repository -> Metadata: read). Only org rulesets that target no
+        repo at all are missed.
+        """
         try:
             summaries = self.client.rest_list(f"/orgs/{self.org}/rulesets")
-        except NotFoundError:
+        except NotFoundError as exc:
+            log.info(
+                "org ruleset listing not permitted (HTTP %s; needs org Administration: write); "
+                "collecting rulesets per repo",
+                exc.status,
+            )
             return []
-        return [self.detail(s, f"/orgs/{self.org}/rulesets/{s['id']}") for s in summaries]
+        records = []
+        for s in summaries:
+            try:
+                records.append(self._detail(s["id"], f"/orgs/{self.org}/rulesets/{s['id']}", None))
+            except NotFoundError as exc:
+                log.warning(
+                    "can't read org ruleset %s %r (HTTP %s)", s["id"], s.get("name"), exc.status
+                )
+        return records
 
-    def for_repo(self, full_name: str) -> list[RulesetRec]:
+    def for_repo(self, full_name: str, default_branch: str | None) -> list[RulesetRec]:
         summaries = self.client.rest_list(
             f"/repos/{full_name}/rulesets", {"includes_parents": "true"}
         )
-        result = []
+        records: list[RulesetRec] = []
+        unreadable: list[dict[str, Any]] = []
         for s in summaries:
-            if s.get("source_type") == "Organization":
-                path = f"/orgs/{self.org}/rulesets/{s['id']}"
-            else:  # Repository or Enterprise: readable through the repo endpoint
-                path = f"/repos/{full_name}/rulesets/{s['id']}"
-            result.append(self.detail(s, path))
-        return result
+            try:
+                records.append(
+                    self._detail(
+                        s["id"],
+                        f"/repos/{full_name}/rulesets/{s['id']}",
+                        {"includes_parents": "true"},
+                    )
+                )
+            except NotFoundError:
+                unreadable.append(s)
+        if unreadable:
+            records += self._from_branch_rules(full_name, default_branch, unreadable)
+        return records
 
-    def detail(self, summary: dict[str, Any], path: str) -> RulesetRec:
+    def _from_branch_rules(
+        self, full_name: str, default_branch: str | None, summaries: list[dict[str, Any]]
+    ) -> list[RulesetRec]:
+        """Rebuild unreadable rulesets from the rules GitHub applies to the default branch."""
+        names = ", ".join(f"{s['id']} {s.get('name')!r}" for s in summaries)
+        if default_branch is None:
+            log.warning(
+                "%s: can't read rulesets %s and repo has no default branch", full_name, names
+            )
+            return []
+        log.warning(
+            "%s: can't read rulesets %s; using rules on %r instead",
+            full_name,
+            names,
+            default_branch,
+        )
+        applied = self.client.rest_list(f"/repos/{full_name}/rules/branches/{default_branch}")
+        records = []
+        for s in summaries:
+            rules = [
+                (r["type"], r.get("parameters")) for r in applied if r.get("ruleset_id") == s["id"]
+            ]
+            if not rules:
+                continue  # doesn't target the default branch; its branch targets are unknown
+            records.append(
+                RulesetRec(
+                    id=s["id"],
+                    node_id=s.get("node_id"),
+                    source_type=s["source_type"],
+                    name=s["name"],
+                    target=s.get("target") or "branch",
+                    enforcement=s.get("enforcement") or "active",
+                    conditions={"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": []}},
+                    bypass_actors=[],
+                    rules=rules,
+                    created_at=ts(s.get("created_at")),
+                    updated_at=ts(s.get("updated_at")),
+                    raw={
+                        "summary": s,
+                        "details_unavailable": True,
+                        "rules_source": f"rules/branches/{default_branch}",
+                    },
+                )
+            )
+        return records
+
+    def _detail(self, ruleset_id: int, path: str, params: dict[str, Any] | None) -> RulesetRec:
         with self._lock:
-            cached = self._cache.get(summary["id"])
+            cached = self._cache.get(ruleset_id)
         if cached:
             return cached
-        params = {"includes_parents": "true"} if path.startswith("/repos/") else None
         record = parse_ruleset(self.client.rest(path, params))
         with self._lock:
             self._cache[record.id] = record
@@ -563,7 +656,7 @@ def fetch_repo_details(
         repo=repo,
         branches=branches,
         classic_rules=classic_rules,
-        rulesets=rulesets.for_repo(repo.full_name),
+        rulesets=rulesets.for_repo(repo.full_name, repo.default_branch),
         collaborators=fetch_collaborators(client, repo.full_name),
         workflows=fetch_workflows(client, repo.full_name),
     )

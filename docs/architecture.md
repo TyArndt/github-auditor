@@ -71,7 +71,9 @@ sequenceDiagram
 | Repository | Actions | Workflows and workflow runs |
 | Repository | Custom properties | Future-proofing |
 | Organization | Members | Teams, team membership, org owners |
-| Organization | Administration | Org rulesets, org base permission, custom repository roles |
+| Organization | Administration | Org base permission, custom repository roles |
+
+**Rulesets need no org-level permission.** GitHub requires *Organization Administration: write* for the `/orgs/{org}/rulesets` endpoints, so the App reads every ruleset, inherited org and enterprise ones included, through `/repos/{repo}/rulesets/{id}?includes_parents=true`, which needs only *Metadata: read*. The only gap is org rulesets that target no repo at all; they don't affect any report. Don't grant write access to close it. (Source: GitHub's published App permission data, `github/docs` repo, `src/github-apps/data/ghec-2022-11-28/server-to-server-permissions.json`.)
 
 **Why an App and not a personal token:** it's tied to no person, its permissions are scoped and read-only, it gets a higher rate limit (15k/hr on GHEC), its tokens are short-lived, and its activity is auditable.
 
@@ -238,6 +240,7 @@ Estimated monthly cost is mostly RDS, NAT, and an always-on Metabase. An approxi
 
 - **Least privilege:** the App is read-only. The collector's DB role can write. Metabase and the API use a separate **read-only DB role** that can only `SELECT` from views.
 - **Secrets** live only in Secrets Manager, injected into the task at runtime and never baked into images or committed to git. `.pem` and `.env` files are gitignored.
+- **TLS:** certificates are always verified. On the corporate network, HTTPS is decrypted by SSL inspection, so the collector trusts the company root CA (`CA_BUNDLE`) *in addition to* the public CAs. See implementation-guide §2.2.
 - **Network:** no public ingress until Okta SSO is in place (Phase 8). The database is never public.
 - **Data sensitivity:** the data includes user logins and access levels, which is internal-confidential. Okta SSO plus group-based authorization comes in Phase 8.
 - **Audit:** `sync_runs` plus CloudWatch logs. All GitHub calls appear under the App's identity in the GitHub audit log.
