@@ -30,12 +30,17 @@ pip install --no-deps -e .
 ```
 CI re-runs `pip-audit` on every PR and weekly. Dependabot opens weekly update PRs.
 
+Packages rejected by our Sonatype policy are listed in [blocked-packages.txt](blocked-packages.txt). `lock.ps1` and CI fail if one reappears, even transitively.
+
+Checks: `.\scripts\check.ps1` (same as CI). Optional pre-commit hook: `git config core.hooksPath .githooks`.
+
 ## Layout
 ```
 docs/               design docs
 src/auditor/        Python package (collector, CLI)
 tests/              pytest suite
-scripts/            dev helpers (lock.ps1)
+scripts/            dev helpers (lock.ps1, check.ps1)
+.githooks/          optional git pre-commit hook
 db/migrations/      numbered SQL migrations (tables in schema `inventory`), run by `auditor db migrate`
 db/views/           report views (schema `reporting`), rebuilt on every upgrade
 infra/terraform/    AWS infrastructure (Phase 4)

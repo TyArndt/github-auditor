@@ -1,0 +1,9 @@
+# Packages that must never appear in requirements*.txt, directly OR transitively.
+# Enforced by scripts/lock.ps1 and CI. One package name per line; reason after it.
+#
+# To add one: append it here, remove whatever depends on it from pyproject.toml,
+# then run .\scripts\lock.ps1.
+
+sqlalchemy    # Sonatype CWE-502 (deserialization via ext.serializer / pickle)
+alembic       # depends on SQLAlchemy
+virtualenv    # Sonatype CVE-2018-20225 / CWE-295 (was pulled in by pre-commit)

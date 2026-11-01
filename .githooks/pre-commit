@@ -1,0 +1,8 @@
+#!/bin/sh
+# Fast checks before each commit (lint, format, types). Tests run in CI / scripts/check.ps1.
+# Enable once per clone:   git config core.hooksPath .githooks
+set -e
+if [ -x .venv/Scripts/python.exe ]; then PY=.venv/Scripts/python.exe; else PY=.venv/bin/python; fi
+"$PY" -m ruff check .
+"$PY" -m ruff format --check .
+"$PY" -m mypy src tests

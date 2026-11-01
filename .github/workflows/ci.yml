@@ -32,10 +32,11 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.14"
-      - name: "Block disallowed packages (Sonatype policy: SQLAlchemy/Alembic, CWE-502)"
+      - name: Block disallowed packages (blocked-packages.txt, Sonatype policy)
         run: |
-          if grep -iE '^(sqlalchemy|alembic)==' requirements.txt requirements-dev.txt; then
-            echo "::error::SQLAlchemy/Alembic must not be dependencies"; exit 1
+          pattern=$(grep -vE '^\s*(#|$)' blocked-packages.txt | awk '{print $1}' | paste -sd'|')
+          if grep -iE "^(${pattern})==" requirements.txt requirements-dev.txt; then
+            echo "::error::Blocked package found in lock files (see blocked-packages.txt)"; exit 1
           fi
       - run: pip install --require-hashes -r requirements-dev.txt
       - run: pip install --no-deps -e .
