@@ -99,21 +99,21 @@ flowchart TB
 
 GraphQL is used for bulk reads (many fields in one call), and REST where GraphQL lacks the data or where ETags make repeat calls free.
 
-| Data | API | Approximate calls per full run |
+| Data | API | Calls per full run |
 |---|---|---|
-| Repos + metadata + CODEOWNERS (3 paths) | GraphQL `organization.repositories` (100/page) | ~25–50 queries |
-| Branches + head commit + matching classic rule | GraphQL `repository.refs` (100/page) | ~2,500 (batched several repos per query → ~300) |
-| Classic protection rule details | GraphQL `repository.branchProtectionRules` | included above |
-| Repo + inherited rulesets | REST `GET /repos/{o}/{r}/rulesets?includes_parents=true` | ~2,500 |
-| Ruleset details (rules, conditions) | REST `GET /repos/{o}/{r}/rulesets/{id}` (cached by id) | ~unique rulesets |
-| Direct collaborators | REST `GET /repos/{o}/{r}/collaborators?affiliation=direct` | ~2,500 |
-| Workflows + latest run | REST `GET /repos/{o}/{r}/actions/workflows`, `/actions/runs?per_page=1` | ~5,000 |
-| Teams, members, team repos | REST / GraphQL per team | ~2–3 × team count |
+| Repos + metadata + CODEOWNERS (3 paths) | GraphQL `organization.repositories` (50/page) | 1 per 50 repos |
+| Branches + head commit + matching classic rule, and all classic rules | GraphQL `repository.refs` + `branchProtectionRules` | 1 per repo (+1 per extra 100 branches) |
+| Repo + inherited rulesets | REST `GET /repos/{o}/{r}/rulesets?includes_parents=true` | 1 per repo |
+| Ruleset details (rules, conditions) | REST `GET /repos/{o}/{r}/rulesets/{id}` (cached by id per run) | 1 per distinct ruleset |
+| Direct collaborators | REST `GET /repos/{o}/{r}/collaborators?affiliation=direct` | 1 per repo |
+| Workflows, recent runs, last run of idle workflows | REST `/actions/workflows`, `/actions/runs`, `/actions/workflows/{id}/runs` | 1 per repo, +1 if it has workflows, +1 per idle workflow |
+| Org members, teams (+ members) | GraphQL | 1 per 100 members / 50 teams |
+| Team → repo grants | REST `GET /orgs/{o}/teams/{slug}/repos` | 1 per team |
 
-**Full run ≈ 10–13k REST calls plus a few hundred GraphQL queries.** That's within one hour of the 15k/hr limit, but too close for comfort, so the collector uses two levers:
+**Rule of thumb: a full run costs about 3–5 REST calls and 1 GraphQL query per repository**, plus one REST call per team. GitHub Enterprise Cloud gives an App installation 15,000 REST requests per hour, and the collector keeps the cost down in two ways:
 
 - **ETag conditional requests:** a `304 Not Modified` response does *not* count against the rate limit. ETags are stored in the `http_cache` table, so after the first run most REST calls are free.
-- **Incremental mode:** repos whose `pushed_at` and `updated_at` haven't changed skip per-repo branch and workflow calls. Access and rulesets still refresh daily, mostly as 304s. A full reconciliation runs weekly.
+- **Incremental mode (not built yet):** skip per-repo branch and workflow calls for repos unchanged since the last run, with a weekly full reconciliation. It was deferred until a real full run is measured. The last log line of every sync reports REST calls, free 304s, and GraphQL points, which is the data to decide on.
 
 The collector reads `x-ratelimit-remaining` on every response and pauses when it drops below a safety floor. It honors `Retry-After` on secondary rate limits (403/429).
 

@@ -1,6 +1,6 @@
 """HTTP client for the GitHub REST and GraphQL APIs.
 
-Handles everything that makes a 2,500-repo crawl safe:
+Handles everything that makes crawling a large organization safe:
 - installation-token auth (auto-refreshed)
 - retries with backoff on network errors and 5xx
 - primary rate limit: pauses when remaining budget drops below a floor

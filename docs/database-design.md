@@ -147,7 +147,7 @@ Matching patterns like `release/*` or `~DEFAULT_BRANCH` against branch names is 
 | `repo_team_access` | Team → repo grants (`permission` = base level, `role_name` = what GitHub shows, possibly a custom role) |
 | `repo_user_access` | **Direct** collaborator grants only |
 
-**Why not one big "user × repo" table?** The org base permission gives every member access to every repo, and org owners are admin everywhere. Storing those would mean `members × repos` rows (2,000 × 2,500 = 5 million) that all say the same thing. Instead we store the *explicit* grants, and the views expand teams and owners when asked. The base permission is shown as one column (`org_base_permission`).
+**Why not one big "user × repo" table?** The org base permission gives every member access to every repo, and org owners are admin everywhere. Storing those would mean one row per member per repo (millions of rows in a large org), all saying the same thing. Instead we store the *explicit* grants, and the views expand teams and owners when asked. The base permission is shown as one column (`org_base_permission`).
 
 ### 4.6 CODEOWNERS
 
@@ -161,7 +161,7 @@ Matching patterns like `release/*` or `~DEFAULT_BRANCH` against branch names is 
 | Table | Holds |
 |---|---|
 | `workflows` | Each workflow and its latest run (date, status, conclusion, runs in last 30 days) |
-| `repo_daily_snapshots` | **One small row per repo per day**: compliance, counts, access summary. This powers trend charts and "what did it look like on date X?" (~900k rows/year, tiny) |
+| `repo_daily_snapshots` | **One small row per repo per day**: compliance, counts, access summary. This powers trend charts and "what did it look like on date X?" (365 small rows per repo per year) |
 | `sync_runs` | One row per collector run: timing, counts, API usage, errors |
 | `http_cache` | ETag + last response per GitHub URL. GitHub doesn't count `304 Not Modified` replies against the rate limit |
 
@@ -290,17 +290,19 @@ In AWS (Phase 4), a login user such as `metabase_user` is created and granted `a
 
 ---
 
-## 9. Size estimate (2,500 repos / 10k branches)
+## 9. Size estimate
 
-| Table | Rows (approx.) |
+Almost every table grows with the number of repositories. Typical rows **per repository**:
+
+| Table | Rows per repo (typical) |
 |---|---|
-| repositories | 2.5k |
-| branches | 10k |
-| branch_protection_matches | ~15k |
-| repo_team_access + repo_user_access | ~10–30k |
-| codeowners_rules | ~10k |
-| workflows | ~8k |
-| repo_daily_snapshots | +2.5k/day (~900k/year) |
-| http_cache | ~10k (largest by bytes, a few hundred MB at most) |
+| repositories | 1 |
+| branches | 2–10 |
+| branch_protection_matches | 1–5 |
+| repo_team_access + repo_user_access | 2–10 |
+| codeowners_rules | 0–10 |
+| workflows | 0–5 |
+| repo_daily_snapshots | 1 per day (365 per year) |
+| http_cache | 3–5 (largest by bytes: a few KB to tens of KB each) |
 
-The whole database stays **well under 2 GB** for years, so `db.t4g.small` on RDS is ample. Every view runs in milliseconds at this size, and no materialized views are needed.
+Even for an organization with thousands of repositories, the database stays **in the low gigabytes for years**, so a small RDS instance (`db.t4g.small`) is enough. Views run in milliseconds at this scale, and no materialized views are needed.
