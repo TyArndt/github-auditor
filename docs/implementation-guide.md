@@ -92,6 +92,8 @@ Our network decrypts and re-signs HTTPS traffic with a company root CA. Anything
    - Administration
    - Members
    - Custom properties (optional, future-proofing)
+
+   > **Leave Administration at Read-only.** GitHub requires *Read and write* to call the org ruleset endpoints, so `auditor whoami` shows a WARNING that org rulesets can't be listed. That's expected and harmless: rulesets are collected per repo, which needs only read access. Granting write would let the App change org settings.
 5. **Where can this GitHub App be installed?** → **Only on this account**.
 6. Click **Create GitHub App**.
 

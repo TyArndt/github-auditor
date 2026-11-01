@@ -75,8 +75,10 @@ def whoami(settings: Settings, http: Any = None) -> WhoAmI:
         client.rest(f"/orgs/{settings.github_org}/rulesets", {"per_page": 1})
     except NotFoundError as exc:
         warnings.append(
-            f"can't list org rulesets (HTTP {exc.status}); org rulesets will be collected per "
-            "repo, and ones that target no repo won't appear"
+            f"org ruleset listing not permitted (HTTP {exc.status}). Expected: GitHub requires "
+            "Organization Administration: WRITE for it, which this read-only App doesn't need. "
+            "Rulesets that apply to repos are collected per repo; only org rulesets targeting "
+            "no repo are missed. Do NOT grant write access to fix this."
         )
 
     return WhoAmI(

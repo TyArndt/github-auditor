@@ -451,14 +451,15 @@ class RulesetFetcher:
 
     Per repo, details are read through the REPOSITORY endpoint
     (/repos/{repo}/rulesets/{id}?includes_parents=true), which also serves inherited
-    org/enterprise rulesets and needs only repository-level access.
+    org/enterprise rulesets and needs only Repository -> Metadata: read. (The equivalent
+    org endpoint needs Organization -> Administration: WRITE, which caused a real-org 403
+    "Resource not accessible by integration".)
 
-    Some rulesets can't be read even there (GitHub answers 403 "Resource not accessible by
-    integration"; seen on an org ruleset with a required-workflow rule). For those we fall
-    back to GitHub's own evaluation of the DEFAULT BRANCH (/repos/{repo}/rules/branches/
-    {branch}), which lists each active rule with the ruleset it comes from. Such rulesets
-    are recorded with conditions "~DEFAULT_BRANCH" only and raw.details_unavailable = true:
-    exact for the default-branch compliance report; other branches can be under-reported.
+    Safety net: if a ruleset still can't be read, fall back to GitHub's own evaluation of
+    the DEFAULT BRANCH (/repos/{repo}/rules/branches/{branch}, Metadata: read), which lists
+    each active rule with the ruleset it comes from. Such rulesets are recorded with
+    conditions "~DEFAULT_BRANCH" only and raw.details_unavailable = true: exact for the
+    default-branch compliance report; other branches can be under-reported.
 
     Note: GitHub omits `bypass_actors` unless the caller can edit the ruleset, so the
     bypass flag in reports can under-report.
@@ -471,12 +472,22 @@ class RulesetFetcher:
         self._lock = threading.Lock()
 
     def org_rulesets(self) -> list[RulesetRec]:
-        """Org-level rulesets, including ones that target no repo yet. Best effort: any the
-        App can't read here are still found through each repo they apply to."""
+        """Org-level rulesets, including ones that target no repo yet.
+
+        GitHub requires Organization -> Administration: WRITE for the /orgs/{org}/rulesets
+        endpoints (per GitHub's published permission data). This App is read-only by design,
+        so a 403 here is expected: every ruleset that applies to a repo is still collected
+        through that repo (Repository -> Metadata: read). Only org rulesets that target no
+        repo at all are missed.
+        """
         try:
             summaries = self.client.rest_list(f"/orgs/{self.org}/rulesets")
         except NotFoundError as exc:
-            log.warning("can't list org rulesets (HTTP %s); collecting them per repo", exc.status)
+            log.info(
+                "org ruleset listing not permitted (HTTP %s; needs org Administration: write); "
+                "collecting rulesets per repo",
+                exc.status,
+            )
             return []
         records = []
         for s in summaries:

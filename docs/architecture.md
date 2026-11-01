@@ -71,7 +71,9 @@ sequenceDiagram
 | Repository | Actions | Workflows and workflow runs |
 | Repository | Custom properties | Future-proofing |
 | Organization | Members | Teams, team membership, org owners |
-| Organization | Administration | Org rulesets, org base permission, custom repository roles |
+| Organization | Administration | Org base permission, custom repository roles |
+
+**Rulesets need no org-level permission.** GitHub requires *Organization Administration: write* for the `/orgs/{org}/rulesets` endpoints, so the App reads every ruleset, inherited org and enterprise ones included, through `/repos/{repo}/rulesets/{id}?includes_parents=true`, which needs only *Metadata: read*. The only gap is org rulesets that target no repo at all; they don't affect any report. Don't grant write access to close it. (Source: GitHub's published App permission data, `github/docs` repo, `src/github-apps/data/ghec-2022-11-28/server-to-server-permissions.json`.)
 
 **Why an App and not a personal token:** it's tied to no person, its permissions are scoped and read-only, it gets a higher rate limit (15k/hr on GHEC), its tokens are short-lived, and its activity is auditable.
 
