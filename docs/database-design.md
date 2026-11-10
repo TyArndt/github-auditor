@@ -122,7 +122,7 @@ Don't confuse these with `created_at` / `updated_at` / `pushed_at`, which are **
 
 | Table | One row per | Key points |
 |---|---|---|
-| `repositories` | repo | PK is GitHub's repo id, so a rename updates the row instead of creating a new one. `details_synced_at` drives incremental sync. `raw` keeps the full API payload |
+| `repositories` | repo | PK is GitHub's repo id, so a rename updates the row instead of creating a new one. `details_synced_at` drives incremental sync. `raw` keeps the full API payload. `open_pull_request_count` and `open_dependabot_*` (total + per severity) are refreshed every run; NULL = not collected (permission missing), not 0 |
 | `branches` | branch | GitHub branches have no id, so the PK is a generated number with `UNIQUE (repo_id, name)`. A deleted-then-recreated branch revives its old row |
 
 **Deliberately not stored:** "is this the default branch?" and "is this branch protected?". Both can be *derived* (`branch.name = repo.default_branch`, and the protection matches), so the views compute them. A stored copy could drift out of sync; a computed value can't.

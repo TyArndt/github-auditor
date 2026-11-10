@@ -12,6 +12,9 @@ Plug it into httpx with `httpx.MockTransport(fake.handler)`. The default scenari
   teams   eng (granted write on svc) <- child eng-backend (member: alice_acme)
 
 Every GET carries an ETag; If-None-Match with the current ETag returns 304.
+Open PRs: svc 2, legacy 0, empty 0. Open Dependabot alerts: svc 1 critical + 2 high,
+legacy 1 medium. `open_prs_forbidden` / `dependabot_forbidden` make those reads fail the way
+they do when the App lacks the permission.
 `ruleset_details_forbidden = True` makes the baseline ruleset's details return 403 (as seen
 in a real org); the collector must then fall back to /rules/branches/{default}.
 Tests mutate the scenario between runs (e.g. delete a branch) to test soft deletes.
@@ -62,6 +65,19 @@ def _repo_node(rid: int, name: str, default: str | None, **extra: Any) -> dict[s
     }
     node.update(extra)
     return node
+
+
+class _GraphQLForbidden(Exception):
+    pass
+
+
+def _alert(number: int, repo_id: int, severity: str) -> dict[str, Any]:
+    return {
+        "number": number,
+        "state": "open",
+        "security_advisory": {"severity": severity},
+        "repository": {"id": repo_id},
+    }
 
 
 def _classic_rule(rid: int, pattern: str, **settings: Any) -> dict[str, Any]:
@@ -142,6 +158,15 @@ class FakeGitHub:
         # True reproduces a real-org case: an org ruleset (with a required-workflow rule) whose
         # details return 403 on both the org and repo endpoints.
         self.ruleset_details_forbidden = False
+        self.open_prs: dict[str, int] = {"svc": 2}
+        self.open_prs_forbidden = False
+        self.dependabot_alerts: list[dict[str, Any]] = [
+            _alert(1, 101, "critical"),
+            _alert(2, 101, "high"),
+            _alert(3, 101, "high"),
+            _alert(4, 102, "medium"),
+        ]
+        self.dependabot_forbidden = False
         self.org_ruleset: dict[str, Any] = {
             "id": 9001,
             "node_id": "RRS_9001",
@@ -272,7 +297,12 @@ class FakeGitHub:
             expires = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
             return httpx.Response(201, json={"token": "ghs_fake", "expires_at": expires})
         if request.method == "POST" and path == "/graphql":
-            return httpx.Response(200, json={"data": self._graphql(json.loads(request.content))})
+            try:
+                data = self._graphql(json.loads(request.content))
+            except _GraphQLForbidden:  # GitHub answers 200 with an `errors` array
+                error = {"type": "FORBIDDEN", "message": "Resource not accessible by integration"}
+                return httpx.Response(200, json={"data": None, "errors": [error]})
+            return httpx.Response(200, json={"data": data})
         body = self._rest(path, request)
         if body is None:
             return httpx.Response(404, json={"message": "Not Found"})
@@ -293,6 +323,9 @@ class FakeGitHub:
             return [{k: self.org_ruleset[k] for k in ("id", "name", "source_type", "enforcement")}]
         if path == "/orgs/acme/rulesets/9001":
             return FORBIDDEN if self.ruleset_details_forbidden else self.org_ruleset
+        if path == "/orgs/acme/dependabot/alerts":
+            assert request.url.params.get("state") == "open"
+            return FORBIDDEN if self.dependabot_forbidden else self.dependabot_alerts
         if team := re.match(r"^/orgs/acme/teams/([^/]+)/repos$", path):
             return self.team_repos.get(team.group(1))
         if repo:
@@ -348,6 +381,20 @@ class FakeGitHub:
             return {
                 "rateLimit": rate,
                 "organization": {"repositories": {"pageInfo": page, "nodes": self.repos}},
+            }
+        if "query OrgRepoOpenPrs" in query:
+            if self.open_prs_forbidden:
+                raise _GraphQLForbidden
+            nodes = [
+                {
+                    "databaseId": r["databaseId"],
+                    "pullRequests": {"totalCount": self.open_prs.get(r["name"], 0)},
+                }
+                for r in self.repos
+            ]
+            return {
+                "rateLimit": rate,
+                "organization": {"repositories": {"pageInfo": page, "nodes": nodes}},
             }
         if "query OrgMembers" in query:
             edges = [{"role": role, "node": user} for user, role in self.members]

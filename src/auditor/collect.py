@@ -13,7 +13,7 @@ from typing import Any
 
 from auditor.codeowners import CODEOWNERS_PATHS
 from auditor.github import queries
-from auditor.github.client import GitHubClient, NotFoundError
+from auditor.github.client import GitHubClient, GraphQLError, NotFoundError
 
 log = logging.getLogger(__name__)
 
@@ -100,6 +100,23 @@ class CodeownersRec:
     content: str | None
 
 
+DEPENDABOT_SEVERITIES = ("critical", "high", "medium", "low")
+
+
+@dataclass
+class DependabotCounts:
+    """Open Dependabot alerts in one repository, by security-advisory severity."""
+
+    critical: int = 0
+    high: int = 0
+    medium: int = 0
+    low: int = 0
+
+    @property
+    def total(self) -> int:
+        return self.critical + self.high + self.medium + self.low
+
+
 @dataclass
 class RepoRec:
     id: int
@@ -123,6 +140,9 @@ class RepoRec:
     codeowners: CodeownersRec
     raw: dict[str, Any]
     custom_properties: dict[str, Any] = field(default_factory=dict)
+    # None = not collected this run (missing permission or failed read), never "zero".
+    open_pull_request_count: int | None = None
+    dependabot: DependabotCounts | None = None
 
 
 @dataclass
@@ -361,6 +381,49 @@ def fetch_custom_properties(client: GitHubClient, org: str) -> dict[int, dict[st
         item["repository_id"]: {p["property_name"]: p["value"] for p in item["properties"]}
         for item in items
     }
+
+
+def fetch_open_pr_counts(client: GitHubClient, org: str) -> dict[int, int] | None:
+    """repo id -> open pull requests. None if the App can't read pull requests
+    (needs Repository -> Pull requests: read)."""
+    try:
+        nodes = _paginate_graphql(
+            client, queries.ORG_REPO_OPEN_PRS, {"org": org}, ["organization", "repositories"]
+        )
+    except (GraphQLError, NotFoundError) as exc:
+        log.warning("open pull request counts not collected (needs Pull requests: read): %s", exc)
+        return None
+    return {n["databaseId"]: n["pullRequests"]["totalCount"] for n in nodes if n}
+
+
+def parse_dependabot_alerts(alerts: list[dict[str, Any]]) -> dict[int, DependabotCounts]:
+    """Count open alerts per repo id by severity. GitHub's `security_advisory.severity` is
+    one of critical/high/medium/low; anything else is counted as low."""
+    counts: dict[int, DependabotCounts] = {}
+    for alert in alerts:
+        repo_id = (alert.get("repository") or {}).get("id")
+        if repo_id is None:
+            continue
+        severity = ((alert.get("security_advisory") or {}).get("severity") or "").lower()
+        if severity not in DEPENDABOT_SEVERITIES:
+            severity = "low"
+        rec = counts.setdefault(repo_id, DependabotCounts())
+        setattr(rec, severity, getattr(rec, severity) + 1)
+    return counts
+
+
+def fetch_dependabot_alerts(client: GitHubClient, org: str) -> dict[int, DependabotCounts] | None:
+    """repo id -> open Dependabot alert counts, from ONE org-wide listing (not one call per
+    repo). Repos absent from the result have no open alerts, or alerts are turned off for
+    them. None if the App can't read alerts (needs Repository -> Dependabot alerts: read)."""
+    try:
+        alerts = client.rest_list(f"/orgs/{org}/dependabot/alerts", {"state": "open"})
+    except NotFoundError as exc:
+        log.warning(
+            "Dependabot alerts not collected (HTTP %s; needs Dependabot alerts: read)", exc.status
+        )
+        return None
+    return parse_dependabot_alerts(alerts)
 
 
 # ---------------------------------------------------------------------------

@@ -86,6 +86,24 @@ query RepoBranches($owner: String!, $name: String!, $cursor: String) {
 }
 """
 
+# Kept out of ORG_REPOS on purpose: `pullRequests` needs the Pull requests: read permission,
+# and a permission error would fail the whole repository listing. `totalCount` alone
+# fetches no PR nodes.
+ORG_REPO_OPEN_PRS = """
+query OrgRepoOpenPrs($org: String!, $cursor: String) {
+  rateLimit { cost }
+  organization(login: $org) {
+    repositories(first: 100, after: $cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes {
+        databaseId
+        pullRequests(states: OPEN) { totalCount }
+      }
+    }
+  }
+}
+"""
+
 ORG_MEMBERS = """
 query OrgMembers($org: String!, $cursor: String) {
   rateLimit { cost }

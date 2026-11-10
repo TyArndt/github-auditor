@@ -4,7 +4,12 @@ from typing import Any
 import httpx
 
 from auditor.config import Settings
-from auditor.whoami import REQUIRED_PERMISSIONS, whoami
+from auditor.whoami import OPTIONAL_PERMISSIONS, REQUIRED_PERMISSIONS, whoami
+
+ALL_PERMISSIONS = {
+    **REQUIRED_PERMISSIONS,
+    **{name: level for name, (level, _) in OPTIONAL_PERMISSIONS.items()},
+}
 
 
 def _settings(pem: str) -> Settings:
@@ -52,7 +57,7 @@ def test_correct_setup_has_no_problems(private_key_pem: str) -> None:
     inst = {
         "account": {"login": "acme"},
         "repository_selection": "all",
-        "permissions": dict(REQUIRED_PERMISSIONS),
+        "permissions": dict(ALL_PERMISSIONS),
     }
     info = whoami(_settings(private_key_pem), http=_http(inst))
     assert info.problems == [] and info.warnings == []
@@ -63,7 +68,7 @@ def test_unreadable_org_rulesets_is_a_warning_not_a_problem(private_key_pem: str
     inst = {
         "account": {"login": "acme"},
         "repository_selection": "all",
-        "permissions": dict(REQUIRED_PERMISSIONS),
+        "permissions": dict(ALL_PERMISSIONS),
     }
     info = whoami(_settings(private_key_pem), http=_http(inst, org_rulesets_readable=False))
     assert info.problems == []
@@ -77,3 +82,15 @@ def test_missing_permission_and_selected_repos_are_reported(private_key_pem: str
     assert "missing permission administration: read" in info.problems
     assert any("SELECTED" in p for p in info.problems)
     assert any("base permission" in p for p in info.problems)
+
+
+def test_missing_optional_permissions_are_warnings(private_key_pem: str) -> None:
+    inst = {
+        "account": {"login": "acme"},
+        "repository_selection": "all",
+        "permissions": dict(REQUIRED_PERMISSIONS),
+    }
+    info = whoami(_settings(private_key_pem), http=_http(inst))
+    assert info.problems == []
+    assert any("pull_requests: read" in w for w in info.warnings)
+    assert any("vulnerability_alerts: read" in w for w in info.warnings)

@@ -7,18 +7,22 @@
   "dashboards": [
     {
       "name": "Repository Inventory",
-      "description": "Every repository: activity, Actions usage, owners. Data from the latest auditor sync.",
+      "description": "Every repository: activity, Actions usage, owners, open PRs and Dependabot alerts. Data from the latest auditor sync.",
       "cards": [
         {"key": "inventory_active_repos", "name": "Active repositories", "display": "scalar"},
         {"key": "inventory_archived_repos", "name": "Archived repositories", "display": "scalar"},
         {"key": "inventory_without_workflows", "name": "Active repos without workflows", "display": "scalar"},
         {"key": "inventory_without_codeowners", "name": "Active repos without CODEOWNERS", "display": "scalar"},
+        {"key": "inventory_open_prs", "name": "Open pull requests", "display": "scalar"},
+        {"key": "inventory_open_alerts", "name": "Open Dependabot alerts", "display": "scalar"},
+        {"key": "inventory_open_critical_high_alerts", "name": "Open critical + high Dependabot alerts", "display": "scalar"},
         {"key": "inventory_push_age", "name": "Repositories by last push", "display": "bar",
          "visualization_settings": {"graph.dimensions": ["Last push"], "graph.metrics": ["Repositories"]}},
         {"key": "actions_adoption", "name": "GitHub Actions adoption", "display": "pie",
          "visualization_settings": {"pie.dimension": "Actions", "pie.metric": "Repositories"}},
         {"key": "inventory_repositories", "name": "All repositories", "display": "table", "height": 10},
-        {"key": "inventory_stale_repos", "name": "Stale repositories (no push in 180+ days)", "display": "table"}
+        {"key": "inventory_stale_repos", "name": "Stale repositories (no push in 180+ days)", "display": "table"},
+        {"key": "inventory_dependabot_alerts", "name": "Repositories with open Dependabot alerts", "display": "table"}
       ]
     },
     {

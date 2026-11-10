@@ -91,6 +91,23 @@ def test_full_sync_populates_reports(db_url: str, private_key_pem: str) -> None:
     assert svc["org_base_permission"] == "read"
     assert (svc["workflow_count"], svc["branch_count"], svc["protected_branch_count"]) == (2, 2, 1)
 
+    counts = {
+        r["name"]: (
+            r["open_pull_request_count"],
+            r["open_dependabot_alert_count"],
+            r["open_dependabot_critical"],
+            r["open_dependabot_high"],
+            r["open_dependabot_medium"],
+            r["open_dependabot_low"],
+        )
+        for r in q(db_url, "SELECT * FROM reporting.v_repositories")
+    }
+    assert counts == {
+        "svc": (2, 3, 1, 2, 0, 0),
+        "legacy": (0, 1, 0, 0, 1, 0),
+        "empty": (0, 0, 0, 0, 0, 0),
+    }
+
     workflows = {
         r["name"]: (r["last_run_conclusion"], r["runs_last_30d"], r["never_run"])
         for r in q(db_url, "SELECT * FROM reporting.v_workflows")
@@ -101,6 +118,29 @@ def test_full_sync_populates_reports(db_url: str, private_key_pem: str) -> None:
     assert runs[0]["status"] == "success" and runs[0]["repos_seen"] == 3
     snapshots = q(db_url, "SELECT count(*) AS n FROM inventory.repo_daily_snapshots")
     assert snapshots[0]["n"] == 3
+    trend = q(db_url, "SELECT * FROM reporting.v_daily_trends")[0]
+    assert (trend["open_pull_request_count"], trend["open_dependabot_alert_count"]) == (2, 4)
+    assert (trend["open_dependabot_critical"], trend["open_dependabot_high"]) == (1, 2)
+
+
+def test_missing_pr_and_dependabot_permissions_leave_counts_unknown(
+    db_url: str, private_key_pem: str
+) -> None:
+    """Without Pull requests / Dependabot alerts: read, the sync still succeeds and the
+    counts are NULL (unknown), never 0."""
+    fake = FakeGitHub()
+    fake.open_prs_forbidden = True
+    fake.dependabot_forbidden = True
+    result = _sync(fake, db_url, private_key_pem)
+    assert result.status == "success", result.errors
+
+    repos = q(
+        db_url,
+        "SELECT open_pull_request_count, open_dependabot_alert_count, open_dependabot_critical "
+        "FROM reporting.v_repositories",
+    )
+    assert len(repos) == 3
+    assert all(set(r.values()) == {None} for r in repos)
 
 
 def test_second_run_soft_deletes_and_uses_etags(db_url: str, private_key_pem: str) -> None:

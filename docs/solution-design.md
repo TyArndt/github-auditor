@@ -48,6 +48,8 @@ GitHub's UI answers these one repository at a time. We need an org-wide, queryab
 ### 4.1 Repository
 Name, full name, visibility (`private`/`internal`; EMU orgs have no public repos), archived, fork, template, default branch, primary language, topics, created/updated/pushed timestamps, size, description, custom properties (captured generically in case they're added later), and whether the repo is disabled.
 
+Also refreshed on every sync: the number of **open pull requests** and the number of **open Dependabot alerts**, broken down by severity (critical/high/medium/low). Both are optional: if the GitHub App lacks the Pull requests or Dependabot alerts read permission, the counts are left empty (unknown) rather than reported as zero. A repo with Dependabot alerts turned off shows 0 open alerts.
+
 ### 4.2 Branches
 For every branch: name, head commit SHA, last commit date and author, whether it's the default branch, whether it's protected, and *what* protects it (classic rule, ruleset, both, or none).
 
