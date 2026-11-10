@@ -87,7 +87,9 @@ Our network decrypts and re-signs HTTPS traffic with a company root CA. Anything
    - Administration
    - Contents
    - Custom properties
+   - Dependabot alerts (open alert counts per repo)
    - Metadata (mandatory, set automatically)
+   - Pull requests (open PR counts per repo)
 4. **Organization permissions** (all **Read-only**):
    - Administration
    - Members
@@ -141,6 +143,8 @@ It exits with an error and a `PROBLEM:` line for each of these:
 - the App is installed on *selected* repositories instead of all of them
 - the installation belongs to a different org than `GITHUB_ORG`
 - the org base permission can't be read (needs Organization → Administration: read)
+
+It prints a `WARNING:` (and still passes) when Pull requests or Dependabot alerts read access is missing. The sync then runs normally but leaves open PR / Dependabot alert counts empty (NULL = unknown, never 0). After adding a permission to an existing App, an org owner must **accept the new permissions** on the installation (GitHub emails them a request) before they take effect.
 
 ### 3.6 Rotating the private key
 1. Generate a new key on the App page; GitHub allows two keys to be active at once.
@@ -223,7 +227,7 @@ All are in the **GitHub Auditor** collection:
 
 | Dashboard | Answers |
 |---|---|
-| Repository Inventory | How many repos, archived, without workflows or CODEOWNERS; activity by last push; Actions adoption; full list; stale repos (180+ days) |
+| Repository Inventory | How many repos, archived, without workflows or CODEOWNERS; open PRs and Dependabot alerts; activity by last push; Actions adoption; full list; stale repos (180+ days); repos with open Dependabot alerts, worst first |
 | Branch Protection & Compliance | Default-branch compliance %, why repos fail, non-compliant list, trend over time, every branch's protection, stale branches (90+ days) |
 | Access & Ownership | Org owners and base permission, admin sprawl, CODEOWNERS owners, who has access to what and why, direct grants, repos without CODEOWNERS |
 | Actions & Collector Health | Data freshness (hours since last sync), recent sync runs, every workflow and its last run |

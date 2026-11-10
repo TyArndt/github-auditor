@@ -17,6 +17,12 @@ REQUIRED_PERMISSIONS = {
     "organization_administration": "read",
 }
 
+# Optional: without them the sync still works, and these counts are left NULL (unknown).
+OPTIONAL_PERMISSIONS = {
+    "pull_requests": ("read", "open pull request counts"),
+    "vulnerability_alerts": ("read", "open Dependabot alert counts"),  # "Dependabot alerts"
+}
+
 
 @dataclass
 class WhoAmI:
@@ -71,6 +77,9 @@ def whoami(settings: Settings, http: Any = None) -> WhoAmI:
         problems.append("can't read org base permission (needs organization_administration: read)")
 
     warnings = []
+    for name, (level, feature) in OPTIONAL_PERMISSIONS.items():
+        if permissions.get(name) not in (level, "write"):
+            warnings.append(f"missing permission {name}: {level}; {feature} won't be collected")
     try:
         client.rest(f"/orgs/{settings.github_org}/rulesets", {"per_page": 1})
     except NotFoundError as exc:

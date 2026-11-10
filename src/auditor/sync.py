@@ -2,7 +2,8 @@
 
 Order (each numbered step is its own transaction):
   1. org, org members (owners), custom roles
-  2. repositories (+ CODEOWNERS, custom properties), org rulesets
+  2. repositories (+ CODEOWNERS, custom properties, open PR and Dependabot alert counts),
+     org rulesets
   3. teams, team members, team -> repo grants
   4. per repo, in worker threads: branches + classic rules, rulesets, collaborators,
      workflows — each repo loaded in its own transaction as soon as it's fetched
@@ -21,9 +22,12 @@ import psycopg
 
 from auditor import __version__
 from auditor.collect import (
+    DependabotCounts,
     RulesetFetcher,
     fetch_custom_properties,
     fetch_custom_roles,
+    fetch_dependabot_alerts,
+    fetch_open_pr_counts,
     fetch_org,
     fetch_org_members,
     fetch_repo_details,
@@ -143,8 +147,15 @@ def _sync(
     # 2. repositories and org-level rulesets
     repos = fetch_repos(client, org_login, limit)
     properties = fetch_custom_properties(client, org_login) or {}
+    # Counts are optional extras: None (permission missing) leaves them NULL = unknown.
+    open_prs = fetch_open_pr_counts(client, org_login)
+    alerts = fetch_dependabot_alerts(client, org_login)
     for repo in repos:
         repo.custom_properties = properties.get(repo.id, {})
+        if open_prs is not None:
+            repo.open_pull_request_count = open_prs.get(repo.id, 0)
+        if alerts is not None:
+            repo.dependabot = alerts.get(repo.id, DependabotCounts())
     result.repos_seen = len(repos)
     rulesets = RulesetFetcher(client, org_login)
     org_rulesets = rulesets.org_rulesets()

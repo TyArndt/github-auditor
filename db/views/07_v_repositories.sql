@@ -84,6 +84,13 @@ SELECT
     tg.admin_teams,
     coalesce(dg.direct_grant_count, 0)        AS direct_grant_count,
     coalesce(au.admin_user_count, 0)          AS admin_user_count,
+    -- NULL = not collected (App lacks the permission), not zero.
+    r.open_pull_request_count,
+    r.open_dependabot_alert_count,
+    r.open_dependabot_critical,
+    r.open_dependabot_high,
+    r.open_dependabot_medium,
+    r.open_dependabot_low,
     r.last_seen_at,
     r.details_synced_at
 FROM inventory.repositories r

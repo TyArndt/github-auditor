@@ -70,6 +70,8 @@ sequenceDiagram
 | Repository | Administration | Classic branch protection, repo rulesets, collaborators/teams with permissions |
 | Repository | Actions | Workflows and workflow runs |
 | Repository | Custom properties | Future-proofing |
+| Repository | Pull requests | Open PR count per repo (optional: counts stay NULL without it) |
+| Repository | Dependabot alerts | Open alert counts per repo by severity, from one org-wide listing (optional: NULL without it) |
 | Organization | Members | Teams, team membership, org owners |
 | Organization | Administration | Org base permission, custom repository roles |
 

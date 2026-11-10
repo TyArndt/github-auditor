@@ -20,7 +20,9 @@ from psycopg.types.json import Jsonb
 
 from auditor.codeowners import parse_codeowners
 from auditor.collect import (
+    DEPENDABOT_SEVERITIES,
     CustomRoleRec,
+    DependabotCounts,
     OrgRec,
     RepoDetails,
     RepoRec,
@@ -88,6 +90,17 @@ def soft_delete(conn: Conn, table: str, seen_since: datetime, **scope: Any) -> i
 
 def _jsonb(value: Any) -> Jsonb | None:
     return None if value is None else Jsonb(value)
+
+
+def _dependabot_columns(counts: DependabotCounts | None) -> dict[str, int | None]:
+    """repositories.open_dependabot_* columns; all NULL when alerts weren't collected."""
+    return {
+        "open_dependabot_alert_count": counts.total if counts else None,
+        **{
+            f"open_dependabot_{severity}": getattr(counts, severity) if counts else None
+            for severity in DEPENDABOT_SEVERITIES
+        },
+    }
 
 
 @dataclass
@@ -231,6 +244,8 @@ class Loader:
                     "pushed_at": r.pushed_at,
                     "custom_properties": Jsonb(r.custom_properties),
                     "raw": Jsonb(r.raw),
+                    "open_pull_request_count": r.open_pull_request_count,
+                    **_dependabot_columns(r.dependabot),
                 }
                 for r in repos
             ],
@@ -520,13 +535,15 @@ class Loader:
                 snapshot_date, repo_id, sync_run_id, visibility, is_archived, days_since_push,
                 branch_count, protected_branch_count, default_branch_protected,
                 default_branch_compliant, workflow_count, has_codeowners, team_grant_count,
-                direct_grant_count, admin_user_count)
+                direct_grant_count, admin_user_count, open_pull_request_count,
+                open_dependabot_alert_count, open_dependabot_critical, open_dependabot_high)
             SELECT current_date, repo_id, %(run_id)s, visibility, is_archived, days_since_push,
                    branch_count, protected_branch_count,
                    coalesce(default_branch_protected, false),
                    coalesce(default_branch_compliant, false),
                    workflow_count, has_codeowners, team_grant_count, direct_grant_count,
-                   admin_user_count
+                   admin_user_count, open_pull_request_count, open_dependabot_alert_count,
+                   open_dependabot_critical, open_dependabot_high
             FROM reporting.v_repositories
             ON CONFLICT (snapshot_date, repo_id) DO UPDATE SET
                 sync_run_id = EXCLUDED.sync_run_id,
@@ -541,7 +558,11 @@ class Loader:
                 has_codeowners = EXCLUDED.has_codeowners,
                 team_grant_count = EXCLUDED.team_grant_count,
                 direct_grant_count = EXCLUDED.direct_grant_count,
-                admin_user_count = EXCLUDED.admin_user_count
+                admin_user_count = EXCLUDED.admin_user_count,
+                open_pull_request_count = EXCLUDED.open_pull_request_count,
+                open_dependabot_alert_count = EXCLUDED.open_dependabot_alert_count,
+                open_dependabot_critical = EXCLUDED.open_dependabot_critical,
+                open_dependabot_high = EXCLUDED.open_dependabot_high
             """,
             {"run_id": self.run.id},
         ).rowcount
